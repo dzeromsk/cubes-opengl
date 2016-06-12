@@ -1,0 +1,79 @@
+# The MIT License (MIT)
+#
+# Copyright (c) 2016 Dominik Zeromski
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+cmake_minimum_required(VERSION 3.0)
+project(cubes)
+
+option(GLFW_BUILD_DOCS OFF)
+option(GLFW_BUILD_EXAMPLES OFF)
+option(GLFW_BUILD_TESTS OFF)
+add_subdirectory(third_party/glfw)
+
+option(BUILD_BULLET2_DEMOS OFF)
+option(BUILD_CPU_DEMOS OFF)
+option(BUILD_EXTRAS OFF)
+option(BUILD_OPENGL3_DEMOS OFF)
+option(BUILD_UNIT_TESTS OFF)
+add_subdirectory(third_party/bullet)
+
+add_library (glad
+  third_party/glad/src/glad.c
+)
+
+target_include_directories (glad PUBLIC
+  third_party/glad/include/
+)
+
+add_executable (cubes
+  cubes.cc
+)
+
+target_include_directories (cubes PUBLIC
+  third_party/bullet/src/
+  third_party/glad/include/
+  third_party/glfw/include/
+  third_party/glm/
+)
+
+target_compile_definitions (cubes PUBLIC
+  -DGLFW_INCLUDE_NONE
+)
+
+target_link_libraries (cubes
+  glfw
+  glad
+  BulletDynamics
+  BulletCollision
+  LinearMath
+  ${GLFW_LIBRARIES} 
+)
+
+if (WIN32)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
+  target_compile_options (cubes PUBLIC /W4)
+endif (WIN32)
+
+if (UNIX)
+  target_compile_options (cubes PUBLIC -Wall -Wextra -Wpedantic -std=c++14)
+  target_link_libraries (cubes dl)
+endif (UNIX)
+
