@@ -44,6 +44,13 @@ target_include_directories (glad PUBLIC
 )
 
 add_executable (cubes
+  world.h
+  cube.h
+  cube_model.h
+  cube_model.cc
+  cube_shader.h
+  cube_shader.cc
+  shader_builder.h
   cubes.cc
 )
 
