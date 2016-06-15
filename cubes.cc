@@ -193,6 +193,7 @@ int main(int argc, char *argv[]) {
   while (glfwWindowShouldClose(window) == false) {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_MULTISAMPLE);
+    glBlendFunc(GL_ONE, GL_SRC_ALPHA);
 
     GLfloat currentFrame = glfwGetTime();
     deltaTime = currentFrame - lastFrame;
@@ -210,6 +211,8 @@ int main(int argc, char *argv[]) {
     glfwPollEvents();
     nk_glfw3_new_frame();
 
+    //glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glm::mat4 projection = glm::perspective(
@@ -220,6 +223,10 @@ int main(int argc, char *argv[]) {
 
     world->Update(deltaTime);
     world->Draw(view, projection);
+
+    //glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    world->Draw(-30, view, projection);
 
     {
       struct nk_panel layout;

@@ -30,6 +30,19 @@
 
 #include "cube_model.h"
 
+template <typename type, size_t size = 10> class CircularBuffer {
+public:
+  CircularBuffer() : n_(0) {}
+
+  void append(const type &value) { array_[(n_++ % size)] = value; }
+
+  type &operator[](int offset) { return array_[(n_ + offset) % size]; }
+
+private:
+  type array_[size];
+  size_t n_;
+};
+
 class Cube {
 public:
   Cube(glm::vec3 position, CubeModel *model, float scale = 1, float mass = 10)
@@ -48,7 +61,7 @@ public:
     btRigidBody::btRigidBodyConstructionInfo bodyCI(mass, motionState_, shape_,
                                                     inertia);
     bodyCI.m_friction = 100;
-    bodyCI.m_restitution = 0;
+    bodyCI.m_restitution = .0f;
     body_ = new btRigidBody(bodyCI);
 
     // TODO(dzeromsk): find better api to start object inactive
@@ -89,8 +102,7 @@ public:
     glm::mat4 model;
     trans.getOpenGLMatrix(glm::value_ptr(model));
 
-    // scale
-    glm::mat4 scaled = glm::scale(model, glm::vec3(scale_));
+    models_.append(model);
 
     // color
     if (body_->wantsSleeping()) {
@@ -98,6 +110,20 @@ public:
     } else {
       cubeModel_->Color(glm::vec3(0.5f, 0.0f, 0.0f));
     }
+
+    Draw(model, view, projection);
+  }
+
+  void Draw(const int model, const glm::mat4 &view,
+            const glm::mat4 &projection) {
+    cubeModel_->Color(glm::vec3(0.3f, 0.2f, 0.2f));
+    Draw(models_[model], view, projection);
+  }
+
+  void Draw(const glm::mat4 &model, const glm::mat4 &view,
+            const glm::mat4 &projection) {
+    // scale
+    glm::mat4 scaled = glm::scale(model, glm::vec3(scale_));
 
     // draw
     cubeModel_->Draw(scaled, view, projection);
@@ -125,4 +151,5 @@ private:
   CubeModel *cubeModel_;
   glm::vec3 initial_position_;
   float scale_;
+  CircularBuffer<glm::mat4, 60> models_;
 };

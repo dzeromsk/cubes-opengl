@@ -102,7 +102,7 @@ public:
 
       if (distance < 4.0f) {
         btVector3 direction = difference / distance * bias;
-        btScalar magnitude = 1.0f / distanceSquared * 8e3f;
+        btScalar magnitude = 10e3f / distanceSquared;
         cube->applyCentralForce(direction * magnitude);
       }
     }
@@ -111,6 +111,13 @@ public:
   void Draw(const glm::mat4 &view, const glm::mat4 &projection) {
     for (auto const cube : cubes_) {
       cube->Draw(view, projection);
+    }
+  }
+
+  void Draw(const int model, const glm::mat4 &view,
+            const glm::mat4 &projection) {
+    for (auto const cube : cubes_) {
+      cube->Draw(model, view, projection);
     }
   }
 
