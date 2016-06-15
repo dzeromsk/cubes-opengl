@@ -144,6 +144,10 @@ int main(int argc, char *argv[]) {
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_MULTISAMPLE);
+  // glEnable(GL_BLEND);
+  // glBlendEquation(GL_FUNC_ADD);
+  // glBlendFunc(GL_ONE, GL_DST_ALPHA);
+  glBlendFunc(GL_ONE, GL_SRC_ALPHA);
 
   GLuint shaderProgram =
       ShaderBuilder().Vertex(vertexSource).Fragment(fragmentSource).Build();
@@ -190,6 +194,8 @@ int main(int argc, char *argv[]) {
 
     glfwPollEvents();
 
+    //glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glm::mat4 projection = glm::perspective(
@@ -200,6 +206,10 @@ int main(int argc, char *argv[]) {
 
     world->Update(deltaTime);
     world->Draw(view, projection);
+
+    //glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    world->Draw(-30, view, projection);
 
     glfwSwapBuffers(window);
   }
