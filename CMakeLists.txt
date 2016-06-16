@@ -80,7 +80,7 @@ if (WIN32)
 endif (WIN32)
 
 if (UNIX)
-  target_compile_options (cubes PUBLIC -Wall -Wextra -Wpedantic -std=c++14)
+  target_compile_options (cubes PUBLIC -Wextra -std=c++14)
   target_link_libraries (cubes dl)
 endif (UNIX)
 

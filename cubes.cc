@@ -38,7 +38,20 @@
 #include "shader_builder.h"
 #include "world.h"
 
+#define NK_INCLUDE_FIXED_TYPES
+#define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
+#define NK_IMPLEMENTATION
+#define NK_GLFW_GL3_IMPLEMENTATION
+#include "third_party/nuklear/nuklear.h"
+#include "third_party/nuklear/nuklear_glfw_gl3.h"
+
 #define UNUSED(x) (void)(x)
+#define MAX_VERTEX_BUFFER 512 * 1024
+#define MAX_ELEMENT_BUFFER 128 * 1024
 
 int kWidth = 1280;
 int kHeight = 800;
@@ -140,11 +153,6 @@ int main(int argc, char *argv[]) {
   glfwSetWindowSizeCallback(window, window_size_callback);
   glfwSwapInterval(1);
 
-  glViewport(0, 0, kWidth, kHeight);
-  glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
-  glEnable(GL_DEPTH_TEST);
-  glEnable(GL_MULTISAMPLE);
-
   GLuint shaderProgram =
       ShaderBuilder().Vertex(vertexSource).Fragment(fragmentSource).Build();
 
@@ -174,7 +182,18 @@ int main(int argc, char *argv[]) {
   int frames = 0;
   GLfloat lastUpdate = 0; // Time of last frame
 
+  struct nk_context *ctx = nk_glfw3_init(window, NK_GLFW3_INSTALL_CALLBACKS);
+  struct nk_font_atlas *atlas;
+  nk_glfw3_font_stash_begin(&atlas);
+  nk_glfw3_font_stash_end();
+
+  glViewport(0, 0, kWidth, kHeight);
+  glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
+
   while (glfwWindowShouldClose(window) == false) {
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_MULTISAMPLE);
+
     GLfloat currentFrame = glfwGetTime();
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
@@ -189,6 +208,7 @@ int main(int argc, char *argv[]) {
     frames++;
 
     glfwPollEvents();
+    nk_glfw3_new_frame();
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -200,6 +220,29 @@ int main(int argc, char *argv[]) {
 
     world->Update(deltaTime);
     world->Draw(view, projection);
+
+    {
+      struct nk_panel layout;
+      if (nk_begin(ctx, &layout, "Cubes", nk_rect(50, 50, 230, 150),
+                   NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE |
+                       NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE)) {
+        enum { EASY, HARD };
+        static int op = EASY;
+        static int property = 20;
+        nk_layout_row_static(ctx, 30, 80, 1);
+        if (nk_button_label(ctx, "button", NK_BUTTON_DEFAULT))
+          fprintf(stdout, "button pressed\n");
+
+        nk_layout_row_dynamic(ctx, 30, 2);
+        if (nk_option_label(ctx, "easy", op == EASY))
+          op = EASY;
+        if (nk_option_label(ctx, "hard", op == HARD))
+          op = HARD;
+      }
+      nk_end(ctx);
+    }
+
+    nk_glfw3_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
 
     glfwSwapBuffers(window);
   }

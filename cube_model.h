@@ -35,7 +35,7 @@ extern const size_t kVerticesSize;
 
 class CubeModel {
 public:
-  CubeModel(GLuint program) : cs_(program), color_(1) {
+  CubeModel(GLuint program) : cs_(program), program_(program), color_(1) {
     glGenVertexArrays(1, &VAO_);
     glGenBuffers(1, &VBO_);
   }
@@ -68,6 +68,8 @@ public:
 
   void Draw(const glm::mat4 &model, const glm::mat4 &view,
             const glm::mat4 &projection) {
+    glUseProgram(program_);
+
     cs_.Model(model);
     cs_.View(view);
     cs_.Projection(projection);
@@ -84,6 +86,7 @@ public:
 private:
   GLuint VBO_;
   GLuint VAO_;
+  GLuint program_;
   CubeShader cs_;
   glm::vec3 color_;
 };
