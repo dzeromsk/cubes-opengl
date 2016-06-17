@@ -43,6 +43,14 @@ target_include_directories (glad PUBLIC
   third_party/glad/include/
 )
 
+add_library (nuklear
+  third_party/nuklear/nuklear.cc
+)
+
+target_include_directories (nuklear PUBLIC
+  third_party/glad/include/
+)
+
 add_executable (cubes
   world.h
   cube.h
@@ -72,6 +80,7 @@ target_link_libraries (cubes
   BulletCollision
   LinearMath
   ${GLFW_LIBRARIES} 
+  nuklear
 )
 
 if (WIN32)
