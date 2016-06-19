@@ -38,6 +38,10 @@ add_subdirectory (third_party/bullet)
 option (LIBUV_BUILD_TESTS OFF)
 add_subdirectory (third_party/libuv)
 
+option (BUILD_SHARED_LIBS OFF)
+option (BUILD_gflags_nothreads_LIB OFF)
+add_subdirectory (third_party/gflags)
+
 add_library (glad
   third_party/glad/src/glad.c
 )
@@ -81,6 +85,7 @@ target_link_libraries (cubes
   uv
   glfw
   glad
+  gflags
   nuklear
   BulletDynamics
   BulletCollision
