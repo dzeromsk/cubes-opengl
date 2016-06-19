@@ -27,6 +27,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/random.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glog/logging.h>
+#include <gflags/gflags.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -128,8 +130,8 @@ void window_size_callback(GLFWwindow *window, int width, int height) {
 }
 
 int main(int argc, char *argv[]) {
-  UNUSED(argc);
-  UNUSED(argv);
+  google::InitGoogleLogging(argv[0]);
+  google::ParseCommandLineFlags(&argc, &argv, true);
 
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);

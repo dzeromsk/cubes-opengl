@@ -42,6 +42,13 @@ option (BUILD_SHARED_LIBS OFF)
 option (BUILD_gflags_nothreads_LIB OFF)
 add_subdirectory (third_party/gflags)
 
+option (WITH_GFLAGS ON)
+option (WITH_GFLAGS WITH_THREADS)
+set (gflags_FOUND 1)
+set (gflags_LIBRARIES gflags)
+set (HAVE_LIB_GFLAGS 1)
+add_subdirectory (third_party/glog)
+
 add_library (glad
   third_party/glad/src/glad.c
 )
@@ -70,10 +77,12 @@ add_executable (cubes
 )
 
 target_include_directories (cubes PUBLIC
-  third_party/libuv/libuv/include
+  third_party/libuv/libuv/include/
   third_party/bullet/src/
   third_party/glad/include/
   third_party/glfw/include/
+  third_party/gflags/include/
+  third_party/glog/
   third_party/glm/
 )
 
@@ -85,6 +94,7 @@ target_link_libraries (cubes
   uv
   glfw
   glad
+  glog
   gflags
   nuklear
   BulletDynamics
