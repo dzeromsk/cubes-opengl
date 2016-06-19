@@ -35,8 +35,8 @@ option (BUILD_OPENGL3_DEMOS OFF)
 option (BUILD_UNIT_TESTS OFF)
 add_subdirectory (third_party/bullet)
 
-option(LIBUV_BUILD_TESTS OFF)
-add_subdirectory(third_party/libuv)
+option (LIBUV_BUILD_TESTS OFF)
+add_subdirectory (third_party/libuv)
 
 add_library (glad
   third_party/glad/src/glad.c
@@ -89,7 +89,6 @@ target_link_libraries (cubes
 )
 
 if (WIN32)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
   target_compile_options (cubes PUBLIC /W4)
 endif (WIN32)
 
