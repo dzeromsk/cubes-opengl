@@ -22,13 +22,14 @@
 
 #include <GLFW/glfw3.h>
 #include <btBulletDynamicsCommon.h>
+#include <gflags/gflags.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/random.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glog/logging.h>
-#include <gflags/gflags.h>
+#include <uv.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -133,6 +134,9 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
+  uv_loop_t *loop;
+  CHECK(loop = uv_default_loop());
+
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -191,6 +195,8 @@ int main(int argc, char *argv[]) {
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
 
   while (glfwWindowShouldClose(window) == false) {
+    uv_run(loop, UV_RUN_NOWAIT);
+
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_MULTISAMPLE);
 
@@ -248,6 +254,7 @@ int main(int argc, char *argv[]) {
   }
 
   glfwTerminate();
+  uv_loop_close(loop);
 
   return EXIT_SUCCESS;
 }
