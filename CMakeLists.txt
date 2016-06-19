@@ -20,20 +20,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-cmake_minimum_required(VERSION 3.0)
-project(cubes)
+cmake_minimum_required (VERSION 3.0)
+project (cubes)
 
-option(GLFW_BUILD_DOCS OFF)
-option(GLFW_BUILD_EXAMPLES OFF)
-option(GLFW_BUILD_TESTS OFF)
-add_subdirectory(third_party/glfw)
+option (GLFW_BUILD_DOCS OFF)
+option (GLFW_BUILD_EXAMPLES OFF)
+option (GLFW_BUILD_TESTS OFF)
+add_subdirectory (third_party/glfw)
 
-option(BUILD_BULLET2_DEMOS OFF)
-option(BUILD_CPU_DEMOS OFF)
-option(BUILD_EXTRAS OFF)
-option(BUILD_OPENGL3_DEMOS OFF)
-option(BUILD_UNIT_TESTS OFF)
-add_subdirectory(third_party/bullet)
+option (BUILD_BULLET2_DEMOS OFF)
+option (BUILD_CPU_DEMOS OFF)
+option (BUILD_EXTRAS OFF)
+option (BUILD_OPENGL3_DEMOS OFF)
+option (BUILD_UNIT_TESTS OFF)
+add_subdirectory (third_party/bullet)
+
+option(LIBUV_BUILD_TESTS OFF)
+add_subdirectory(third_party/libuv)
 
 add_library (glad
   third_party/glad/src/glad.c
@@ -63,6 +66,7 @@ add_executable (cubes
 )
 
 target_include_directories (cubes PUBLIC
+  third_party/libuv/libuv/include
   third_party/bullet/src/
   third_party/glad/include/
   third_party/glfw/include/
@@ -74,13 +78,14 @@ target_compile_definitions (cubes PUBLIC
 )
 
 target_link_libraries (cubes
+  uv
   glfw
   glad
+  nuklear
   BulletDynamics
   BulletCollision
   LinearMath
   ${GLFW_LIBRARIES} 
-  nuklear
 )
 
 if (WIN32)
