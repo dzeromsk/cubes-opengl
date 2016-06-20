@@ -24,9 +24,13 @@
 
 #include <GLFW/glfw3.h>
 #include <btBulletDynamicsCommon.h>
+#include <gflags/gflags.h>
 #include <glm/glm.hpp>
 
 #include "cube.h"
+
+DEFINE_double(force, 8e3f, "Attraction force");
+DEFINE_double(force_distance, 4.0f, "Attraction force distance cap");
 
 static Cube *cube;
 
@@ -100,9 +104,9 @@ public:
       btScalar distanceSquared = difference.length2();
       btScalar distance = difference.length();
 
-      if (distance < 4.0f) {
+      if (distance < FLAGS_force_distance) {
         btVector3 direction = difference / distance * bias;
-        btScalar magnitude = 10e3f / distanceSquared;
+        btScalar magnitude = FLAGS_force / distanceSquared;
         cube->applyCentralForce(direction * magnitude);
       }
     }

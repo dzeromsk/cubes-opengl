@@ -32,7 +32,7 @@
 
 template <typename type, size_t size = 10> class CircularBuffer {
 public:
-  CircularBuffer() : n_(0) {}
+  CircularBuffer() : n_(0) { memset(array_, 0, sizeof(array_)); }
 
   void append(const type &value) { array_[(n_++ % size)] = value; }
 
@@ -43,9 +43,13 @@ private:
   size_t n_;
 };
 
+DEFINE_int32(max_speed, 18, "Max speed cap");
+DEFINE_double(default_mass, 10, "Default cube mass");
+
 class Cube {
 public:
-  Cube(glm::vec3 position, CubeModel *model, float scale = 1, float mass = 10)
+  Cube(glm::vec3 position, CubeModel *model, float scale = 1,
+       float mass = FLAGS_default_mass)
       : cubeModel_(model), scale_(scale) {
     shape_ = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f) * scale_);
     motionState_ = new btDefaultMotionState(
@@ -133,7 +137,7 @@ public:
     body_->activate(true);
     // body_->applyCentralImpulse(btVector3(i.x, i.y, i.z));
     auto a = body_->getLinearVelocity();
-    if (a.length() < 18) {
+    if (a.length() < FLAGS_max_speed) {
       body_->setLinearVelocity(a + btVector3(i.x, i.y, i.z));
     }
   }
