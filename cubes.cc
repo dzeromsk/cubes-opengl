@@ -54,8 +54,24 @@
 #define MAX_VERTEX_BUFFER 512 * 1024
 #define MAX_ELEMENT_BUFFER 128 * 1024
 
-int kWidth = 1280;
-int kHeight = 800;
+DEFINE_int32(width, 1280, "Window width");
+DEFINE_int32(height, 800, "Windows height");
+DEFINE_int32(cubes_count, 15, "Small cube dimension");
+DEFINE_int32(player_scale, 4, "Player cube scale");
+DEFINE_double(player_mass, 1e3f, "Player cube mass");
+
+template <typename type, size_t size = 10> class CircularBuffer {
+public:
+  CircularBuffer() : n_(0) { memset(array_, 0, sizeof(array_)); }
+
+  void append(const type &value) { array_[(n_++ % size)] = value; }
+
+  type &operator[](int offset) { return array_[(n_ + offset) % size]; }
+
+private:
+  type array_[size];
+  size_t n_;
+};
 
 // static Cube *cube = nullptr;
 static World *world = nullptr;
@@ -117,16 +133,16 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action,
       glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height,
                            mode->refreshRate);
       fullscreen = true;
-      w = kWidth;
-      h = kHeight;
+      w = FLAGS_width;
+      h = FLAGS_height;
     }
   }
 }
 
 void window_size_callback(GLFWwindow *window, int width, int height) {
   UNUSED(window);
-  kWidth = width;
-  kHeight = height;
+  FLAGS_width = width;
+  FLAGS_height = height;
   glViewport(0, 0, width, height);
 }
 
@@ -145,7 +161,8 @@ int main(int argc, char *argv[]) {
   glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
   glfwWindowHint(GLFW_SAMPLES, 4);
 
-  window = glfwCreateWindow(kWidth, kHeight, "OpenGL", nullptr, nullptr);
+  window =
+      glfwCreateWindow(FLAGS_width, FLAGS_height, "Cubes", nullptr, nullptr);
   if (window == nullptr) {
     fprintf(stderr, "Failed to Create OpenGL Context");
     return EXIT_FAILURE;
@@ -166,15 +183,16 @@ int main(int argc, char *argv[]) {
   gDeactivationTime = btScalar(1.);
 
   world = new World(glm::vec3(0, -20, 0));
-  for (int i = -15; i < 15; ++i) {
-    for (int j = -15; j < 15; ++j) {
+  for (int i = -FLAGS_cubes_count; i < FLAGS_cubes_count; ++i) {
+    for (int j = -FLAGS_cubes_count; j < FLAGS_cubes_count; ++j) {
       glm::vec3 pos = glm::vec3(i * 2, 0.5f, j * 2);
       Cube *c = new Cube(pos, &cm);
       world->Add(c);
     }
   }
 
-  cube = new Cube(glm::vec3(0, 15, 0), &cm, 4, 1e3f);
+  cube =
+      new Cube(glm::vec3(0, 15, 0), &cm, FLAGS_player_scale, FLAGS_player_mass);
   world->Add(cube);
 
   GLfloat deltaTime = 0.0f; // Time between current frame and last frame
@@ -191,8 +209,11 @@ int main(int argc, char *argv[]) {
   nk_glfw3_font_stash_begin(&atlas);
   nk_glfw3_font_stash_end();
 
-  glViewport(0, 0, kWidth, kHeight);
+  glViewport(0, 0, FLAGS_width, FLAGS_height);
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
+
+  static char buffer[256] = {0};
+  CircularBuffer<int, 30> fps_history;
 
   while (glfwWindowShouldClose(window) == false) {
     uv_run(loop, UV_RUN_NOWAIT);
@@ -205,9 +226,8 @@ int main(int argc, char *argv[]) {
     lastFrame = currentFrame;
 
     if (currentFrame - lastUpdate >= 1.0) {
-      char buffer[256] = {0};
-      snprintf(buffer, 255, "FPS: %d", frames);
-      glfwSetWindowTitle(window, buffer);
+      snprintf(buffer, sizeof(buffer), "%d", frames);
+      fps_history.append(frames);
       frames = 0;
       lastUpdate = currentFrame;
     }
@@ -219,7 +239,7 @@ int main(int argc, char *argv[]) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glm::mat4 projection = glm::perspective(
-        45.0f, (GLfloat)kWidth / (GLfloat)kHeight, 0.1f, 100.0f);
+        45.0f, (GLfloat)FLAGS_width / (GLfloat)FLAGS_height, 0.1f, 100.0f);
 
     auto c = cube->Position();
     glm::mat4 view = glm::lookAt(c + glm::vec3(0.f, 15.f, 25.f), c, cameraUp);
@@ -229,21 +249,26 @@ int main(int argc, char *argv[]) {
 
     {
       struct nk_panel layout;
-      if (nk_begin(ctx, &layout, "Cubes", nk_rect(50, 50, 230, 150),
-                   NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE |
+      if (nk_begin(ctx, &layout, "Cubes", nk_rect(50, 50, 230, 230),
+                   NK_WINDOW_BORDER | NK_WINDOW_MOVABLE |
                        NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE)) {
-        enum { EASY, HARD };
-        static int op = EASY;
-        static int property = 20;
-        nk_layout_row_static(ctx, 30, 80, 1);
-        if (nk_button_label(ctx, "button", NK_BUTTON_DEFAULT))
-          fprintf(stdout, "button pressed\n");
 
-        nk_layout_row_dynamic(ctx, 30, 2);
-        if (nk_option_label(ctx, "easy", op == EASY))
-          op = EASY;
-        if (nk_option_label(ctx, "hard", op == HARD))
-          op = HARD;
+        nk_layout_row_dynamic(ctx, 50, 1);
+        if (nk_chart_begin(ctx, NK_CHART_COLUMN, 15, 0, 1.5f)) {
+          for (int i = -15; i < 0; ++i) {
+            nk_chart_push(ctx, (float)fps_history[i] / 60);
+          }
+          nk_chart_end(ctx);
+        }
+
+        static const float ratio[] = {60, 135};
+
+        nk_layout_row(ctx, NK_STATIC, 25, 2, ratio);
+        nk_label(ctx, "FPS:", NK_TEXT_LEFT);
+        int len = strlen(buffer);
+
+        nk_edit_string(ctx, NK_EDIT_SIMPLE | NK_EDIT_READ_ONLY, buffer, &len,
+                       128, nk_filter_default);
       }
       nk_end(ctx);
     }
