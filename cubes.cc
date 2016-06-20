@@ -201,6 +201,7 @@ int main(int argc, char *argv[]) {
 
   static char buffer[256] = {0};
   CircularBuffer<int, 30> fps_history;
+  static size_t delay = 30;
 
   while (glfwWindowShouldClose(window) == false) {
     uv_run(loop, UV_RUN_NOWAIT);
@@ -224,7 +225,7 @@ int main(int argc, char *argv[]) {
     glfwPollEvents();
     nk_glfw3_new_frame();
 
-    //glDepthMask(GL_TRUE);
+    // glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -237,9 +238,9 @@ int main(int argc, char *argv[]) {
     world->Update(deltaTime);
     world->Draw(view, projection);
 
-    //glDepthMask(GL_FALSE);
+    // glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
-    world->Draw(-30, view, projection);
+    world->Draw(-delay, view, projection);
 
     {
       struct nk_panel layout;
@@ -260,9 +261,12 @@ int main(int argc, char *argv[]) {
         nk_layout_row(ctx, NK_STATIC, 25, 2, ratio);
         nk_label(ctx, "FPS:", NK_TEXT_LEFT);
         int len = strlen(buffer);
-
         nk_edit_string(ctx, NK_EDIT_SIMPLE | NK_EDIT_READ_ONLY, buffer, &len,
                        128, nk_filter_default);
+
+        nk_layout_row(ctx, NK_STATIC, 25, 2, ratio);
+        nk_label(ctx, "Delay:", NK_TEXT_LEFT);
+        nk_progress(ctx, &delay, 60, NK_MODIFIABLE);
       }
       nk_end(ctx);
     }
