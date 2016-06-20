@@ -63,6 +63,7 @@ add_library (nuklear
 
 target_include_directories (nuklear PUBLIC
   third_party/glad/include/
+  third_party/glfw/include/
 )
 
 add_executable (cubes
@@ -105,6 +106,7 @@ target_link_libraries (cubes
 
 if (WIN32)
   target_compile_options (cubes PUBLIC /W4)
+  target_link_libraries (cubes ws2_32 iphlpapi psapi userenv)
 endif (WIN32)
 
 if (UNIX)

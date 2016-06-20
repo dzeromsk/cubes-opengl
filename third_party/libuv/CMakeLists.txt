@@ -23,8 +23,7 @@ set(SOURCES
     )
 
 if(WIN32)
-    add_definitions(-D_WIN32_WINNT=0x0600 -D_GNU_SOURCE)
-    add_definitions(-ladvapi32 -liphlpapi -lpsapi -luserenv -lshell32 -lws2_32)
+    add_definitions(/DWIN32 /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE /D_WIN32_WINNT=0x0600 /D_GNU_SOURCE /DWIN32_LEAN_AND_MEAN)
     include_directories(${LIBUVDIR}/src/win)
     set (SOURCES ${SOURCES}
         ${LIBUVDIR}/include/uv-win.h
@@ -59,7 +58,8 @@ if(WIN32)
         ${LIBUVDIR}/src/win/winapi.c
         ${LIBUVDIR}/src/win/winapi.h
         ${LIBUVDIR}/src/win/winsock.c
-        ${LIBUVDIR}/src/win/winsock.h    
+        ${LIBUVDIR}/src/win/winsock.h
+        ${LIBUVDIR}/src/win/snprintf.c
         )
 
     add_library(uv ${SOURCES})
@@ -170,6 +170,10 @@ else()
     find_library(M_LIB NAMES m)
     find_package(Threads)
     target_link_libraries(uv ${CMAKE_THREAD_LIBS_INIT} ${M_LIB})
+
+    if (WIN32)
+        target_link_libraries (uv ws2_32 advapi32 iphlpapi psapi userenv shell32)
+    endif()
 
     if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
         find_library(DL_LIB NAMES dl)
