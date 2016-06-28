@@ -36,21 +36,11 @@
 #include "cube.h"
 #include "cube_model.h"
 #include "cube_shader.h"
+#include "hud.h"
 #include "shader_builder.h"
 #include "world.h"
 
-#define NK_INCLUDE_FIXED_TYPES
-#define NK_INCLUDE_STANDARD_IO
-#define NK_INCLUDE_DEFAULT_ALLOCATOR
-#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
-#define NK_INCLUDE_FONT_BAKING
-#define NK_INCLUDE_DEFAULT_FONT
-#include "third_party/nuklear/nuklear.h"
-#include "third_party/nuklear/nuklear_glfw_gl3.h"
-
 #define UNUSED(x) (void)(x)
-#define MAX_VERTEX_BUFFER 512 * 1024
-#define MAX_ELEMENT_BUFFER 128 * 1024
 
 DEFINE_int32(width, 1280, "Window width");
 DEFINE_int32(height, 800, "Windows height");
@@ -186,20 +176,10 @@ int main(int argc, char *argv[]) {
   glm::mat4 view;
   glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 
-  int frames = 0;
-  GLfloat lastUpdate = 0; // Time of last frame
-
-  struct nk_context *ctx = nk_glfw3_init(window, NK_GLFW3_INSTALL_CALLBACKS);
-  struct nk_font_atlas *atlas;
-  nk_glfw3_font_stash_begin(&atlas);
-  nk_glfw3_font_stash_end();
+  auto hud = new HUD(window);
 
   glViewport(0, 0, FLAGS_width, FLAGS_height);
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
-
-  static char buffer[256] = {0};
-  CircularBuffer<int, 30> fps_history;
-  static size_t delay = 30;
 
   while (glfwWindowShouldClose(window) == false) {
     uv_run(loop, UV_RUN_NOWAIT);
@@ -212,16 +192,7 @@ int main(int argc, char *argv[]) {
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
-    if (currentFrame - lastUpdate >= 1.0) {
-      snprintf(buffer, sizeof(buffer), "%d", frames);
-      fps_history.append(frames);
-      frames = 0;
-      lastUpdate = currentFrame;
-    }
-    frames++;
-
     glfwPollEvents();
-    nk_glfw3_new_frame();
 
     // glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
@@ -238,38 +209,9 @@ int main(int argc, char *argv[]) {
 
     // glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
-    world->Draw(-delay, view, projection);
+    world->Draw(hud->GetDelay() * -1, view, projection);
 
-    {
-      struct nk_panel layout;
-      if (nk_begin(ctx, &layout, "Cubes", nk_rect(50, 50, 230, 230),
-                   NK_WINDOW_BORDER | NK_WINDOW_MOVABLE |
-                       NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE)) {
-
-        nk_layout_row_dynamic(ctx, 50, 1);
-        if (nk_chart_begin(ctx, NK_CHART_COLUMN, 15, 0, 1.5f)) {
-          for (int i = -15; i < 0; ++i) {
-            nk_chart_push(ctx, (float)fps_history[i] / 60);
-          }
-          nk_chart_end(ctx);
-        }
-
-        static const float ratio[] = {60, 135};
-
-        nk_layout_row(ctx, NK_STATIC, 25, 2, ratio);
-        nk_label(ctx, "FPS:", NK_TEXT_LEFT);
-        int len = strlen(buffer);
-        nk_edit_string(ctx, NK_EDIT_SIMPLE | NK_EDIT_READ_ONLY, buffer, &len,
-                       128, nk_filter_default);
-
-        nk_layout_row(ctx, NK_STATIC, 25, 2, ratio);
-        nk_label(ctx, "Delay:", NK_TEXT_LEFT);
-        nk_progress(ctx, &delay, 60, NK_MODIFIABLE);
-      }
-      nk_end(ctx);
-    }
-
-    nk_glfw3_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
+    hud->Draw();
 
     glfwSwapBuffers(window);
   }

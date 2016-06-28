@@ -65,6 +65,7 @@ target_include_directories (nuklear PUBLIC
 )
 
 add_executable (cubes
+  hud.h
   world.h
   cube.h
   cube_model.h
