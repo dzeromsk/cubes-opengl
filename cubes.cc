@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
   uv_loop_t *loop;
   CHECK(loop = uv_default_loop());
 
-  glfwInit();
+  CHECK(glfwInit() == GLFW_TRUE);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -136,15 +136,14 @@ int main(int argc, char *argv[]) {
   glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
   glfwWindowHint(GLFW_SAMPLES, 4);
 
-  window =
-      glfwCreateWindow(FLAGS_width, FLAGS_height, "Cubes", nullptr, nullptr);
-  if (window == nullptr) {
-    fprintf(stderr, "Failed to Create OpenGL Context");
-    return EXIT_FAILURE;
-  }
+  CHECK(window = glfwCreateWindow(FLAGS_width, FLAGS_height, "Cubes", nullptr,
+                                  nullptr))
+      << "Failed to Create OpenGL Context";
 
   glfwMakeContextCurrent(window);
-  gladLoadGL();
+
+  CHECK(gladLoadGL() == GL_TRUE);
+
   glfwSetKeyCallback(window, key_callback);
   glfwSetWindowSizeCallback(window, window_size_callback);
   glfwSwapInterval(1);
