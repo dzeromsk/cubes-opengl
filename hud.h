@@ -34,7 +34,8 @@
 
 class HUD {
 public:
-  HUD(GLFWwindow *window) : delay_(30), last_update_(0), frames_(0) {
+  HUD(GLFWwindow *window)
+      : delay_(30), input_delay_(1), last_update_(0), frames_(0) {
     ctx_ = nk_glfw3_init(window, NK_GLFW3_INSTALL_CALLBACKS);
     struct nk_font_atlas *atlas;
     nk_glfw3_font_stash_begin(&atlas);
@@ -79,6 +80,9 @@ public:
         nk_layout_row(ctx_, NK_STATIC, 25, 2, ratio);
         nk_label(ctx_, "Delay:", NK_TEXT_LEFT);
         nk_progress(ctx_, &delay_, 60, NK_MODIFIABLE);
+        nk_layout_row(ctx_, NK_STATIC, 25, 2, ratio);
+        nk_label(ctx_, "In Delay:", NK_TEXT_LEFT);
+        nk_progress(ctx_, &input_delay_, 60, NK_MODIFIABLE);
       }
       nk_end(ctx_);
     }
@@ -87,10 +91,12 @@ public:
   }
 
   size_t GetDelay() { return delay_; }
+  size_t GetInputDelay() { return input_delay_; }
 
 private:
   struct nk_context *ctx_;
   size_t delay_;
+  size_t input_delay_;
   int frames_;
   GLfloat last_update_;
   CircularBuffer<int, 30> fps_history_;

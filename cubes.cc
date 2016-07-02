@@ -52,37 +52,70 @@ DEFINE_double(player_mass, 1e3f, "Player cube mass");
 static World *world = nullptr;
 static GLFWwindow *window = nullptr;
 
+#define INPUT_UP (1 << 0)
+#define INPUT_DOWN (1 << 1)
+#define INPUT_LEFT (1 << 3)
+#define INPUT_RIGHT (1 << 2)
+#define INPUT_RESET (1 << 4)
+#define INPUT_QUIT (1 << 5)
+static uint8_t input;
+static CircularBuffer<uint8_t, 60> input_history;
+
+void handle_input(uint8_t input) {
+  if (input & INPUT_UP) {
+    cube->Force(glm::vec3(0.f, 0.f, -1.f));
+  }
+  if (input & INPUT_DOWN) {
+    cube->Force(glm::vec3(0.f, 0.f, 1.f));
+  }
+  if (input & INPUT_LEFT) {
+    cube->Force(glm::vec3(-1.f, 0.f, 0.f));
+  }
+  if (input & INPUT_RIGHT) {
+    cube->Force(glm::vec3(1.f, 0.f, 0.f));
+  }
+  if (input & INPUT_RESET) {
+    world->Reset();
+  }
+  // if (input & INPUT_QUIT) {
+  // }
+}
+
 void key_callback(GLFWwindow *window, int key, int scancode, int action,
                   int mode) {
   UNUSED(scancode);
   UNUSED(mode);
 
+  input = 0;
+
   if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, GL_TRUE);
+    input |= INPUT_QUIT;
   }
 
   if (key == GLFW_KEY_Q && action == GLFW_PRESS) {
     glfwSetWindowShouldClose(window, GL_TRUE);
+    input |= INPUT_QUIT;
   }
 
   if (key == GLFW_KEY_R && action == GLFW_PRESS) {
-    world->Reset();
+    input |= INPUT_RESET;
   }
 
   if (key == GLFW_KEY_W) {
-    cube->Force(glm::vec3(0.f, 0.f, -1.f));
+    input |= INPUT_UP;
   }
 
   if (key == GLFW_KEY_S) {
-    cube->Force(glm::vec3(0.f, 0.f, 1.f));
+    input |= INPUT_DOWN;
   }
 
   if (key == GLFW_KEY_A) {
-    cube->Force(glm::vec3(-1.f, 0.f, 0.f));
+    input |= INPUT_LEFT;
   }
 
   if (key == GLFW_KEY_D) {
-    cube->Force(glm::vec3(1.f, 0.f, 0.f));
+    input |= INPUT_RIGHT;
   }
 
   if (key == GLFW_KEY_T && action == GLFW_PRESS) {
@@ -191,7 +224,10 @@ int main(int argc, char *argv[]) {
     deltaTime = currentFrame - lastFrame;
     lastFrame = currentFrame;
 
+    input = 0;
     glfwPollEvents();
+    handle_input(input_history[hud->GetInputDelay() * -1]);
+    input_history.append(input);
 
     // glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
