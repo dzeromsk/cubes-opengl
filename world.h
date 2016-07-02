@@ -89,6 +89,8 @@ public:
     }
 
     for (auto const c : cubes_) {
+      c->Update();
+
       auto cube = c->GetBody();
       if (cube->wantsSleeping()) {
         continue;

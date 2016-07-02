@@ -234,15 +234,15 @@ int main(int argc, char *argv[]) {
     glm::mat4 projection = glm::perspective(
         45.0f, (GLfloat)FLAGS_width / (GLfloat)FLAGS_height, 0.1f, 100.0f);
 
-    auto c = cube->Position();
+    auto c = cube->Position(hud->GetDelay() * -1);
     glm::mat4 view = glm::lookAt(c + glm::vec3(0.f, 15.f, 25.f), c, cameraUp);
 
     world->Update(deltaTime);
-    world->Draw(view, projection);
+    world->Draw(hud->GetDelay() * -1, view, projection);
 
     // glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
-    world->Draw(hud->GetDelay() * -1, view, projection);
+    world->Draw(view, projection);
 
     hud->Draw();
 

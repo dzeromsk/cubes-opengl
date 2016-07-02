@@ -97,15 +97,38 @@ public:
 
   btRigidBody *GetBody() { return body_; }
 
+  void Update() {
+    {
+      // move
+      btTransform trans;
+      body_->getMotionState()->getWorldTransform(trans);
+      glm::mat4 model;
+      trans.getOpenGLMatrix(glm::value_ptr(model));
+
+      models_.append(model);
+    }
+
+    {
+      // save position
+      auto transform = body_->getCenterOfMassTransform();
+      auto pos = transform.getOrigin();
+
+      positions_.append(glm::vec3(pos.x(), pos.y(), pos.z()));
+    }
+  }
+
   void Draw(const glm::mat4 &view, const glm::mat4 &projection) {
-    // move
-    btTransform trans;
-    body_->getMotionState()->getWorldTransform(trans);
-    glm::mat4 model;
-    trans.getOpenGLMatrix(glm::value_ptr(model));
+    Draw(models_[-1], view, projection);
+  }
 
-    models_.append(model);
+  void Draw(const int model, const glm::mat4 &view,
+            const glm::mat4 &projection) {
+    // cubeModel_->Color(glm::vec3(0.3f, 0.2f, 0.2f));
+    Draw(models_[model], view, projection);
+  }
 
+  void Draw(const glm::mat4 &model, const glm::mat4 &view,
+            const glm::mat4 &projection) {
     // color
     if (body_->wantsSleeping()) {
       cubeModel_->Color(glm::vec3(1.0f, 1.0f, 1.0f));
@@ -113,17 +136,6 @@ public:
       cubeModel_->Color(glm::vec3(0.5f, 0.0f, 0.0f));
     }
 
-    Draw(model, view, projection);
-  }
-
-  void Draw(const int model, const glm::mat4 &view,
-            const glm::mat4 &projection) {
-    cubeModel_->Color(glm::vec3(0.3f, 0.2f, 0.2f));
-    Draw(models_[model], view, projection);
-  }
-
-  void Draw(const glm::mat4 &model, const glm::mat4 &view,
-            const glm::mat4 &projection) {
     // scale
     glm::mat4 scaled = glm::scale(model, glm::vec3(scale_));
 
@@ -140,11 +152,7 @@ public:
     }
   }
 
-  glm::vec3 Position() {
-    auto transform = body_->getCenterOfMassTransform();
-    auto pos = transform.getOrigin();
-    return glm::vec3(pos.x(), pos.y(), pos.z());
-  }
+  glm::vec3 Position(int i = -1) { return positions_[i]; }
 
 private:
   btCollisionShape *shape_;
@@ -154,4 +162,5 @@ private:
   glm::vec3 initial_position_;
   float scale_;
   CircularBuffer<glm::mat4, 60> models_;
+  CircularBuffer<glm::vec3, 60> positions_;
 };
