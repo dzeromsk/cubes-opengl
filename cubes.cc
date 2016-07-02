@@ -42,6 +42,7 @@
 
 #define UNUSED(x) (void)(x)
 
+DEFINE_bool(show_origin, true, "Render \"server\" cube");
 DEFINE_int32(width, 1280, "Window width");
 DEFINE_int32(height, 800, "Windows height");
 DEFINE_int32(cubes_count, 15, "Small cube dimension");
@@ -242,7 +243,8 @@ int main(int argc, char *argv[]) {
 
     // glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
-    world->Draw(view, projection);
+    if (FLAGS_show_origin)
+      world->Draw(view, projection);
 
     hud->Draw();
 

@@ -114,28 +114,29 @@ public:
       auto pos = transform.getOrigin();
 
       positions_.append(glm::vec3(pos.x(), pos.y(), pos.z()));
+
+      status_.append(body_->wantsSleeping());
     }
   }
 
   void Draw(const glm::mat4 &view, const glm::mat4 &projection) {
+    cubeModel_->Color(glm::vec3(0.3f, 0.2f, 0.2f));
     Draw(models_[-1], view, projection);
   }
 
   void Draw(const int model, const glm::mat4 &view,
             const glm::mat4 &projection) {
-    // cubeModel_->Color(glm::vec3(0.3f, 0.2f, 0.2f));
+    // color
+    if (status_[model]) {
+      cubeModel_->Color(glm::vec3(1.0f, 1.0f, 1.0f));
+    } else {
+      cubeModel_->Color(glm::vec3(0.5f, 0.0f, 0.0f));
+    }
     Draw(models_[model], view, projection);
   }
 
   void Draw(const glm::mat4 &model, const glm::mat4 &view,
             const glm::mat4 &projection) {
-    // color
-    if (body_->wantsSleeping()) {
-      cubeModel_->Color(glm::vec3(1.0f, 1.0f, 1.0f));
-    } else {
-      cubeModel_->Color(glm::vec3(0.5f, 0.0f, 0.0f));
-    }
-
     // scale
     glm::mat4 scaled = glm::scale(model, glm::vec3(scale_));
 
@@ -163,4 +164,5 @@ private:
   float scale_;
   CircularBuffer<glm::mat4, 60> models_;
   CircularBuffer<glm::vec3, 60> positions_;
+  CircularBuffer<bool, 60> status_;
 };
