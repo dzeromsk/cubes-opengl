@@ -30,11 +30,9 @@
 DEFINE_double(force, 8e3f, "Attraction force");
 DEFINE_double(force_distance, 4.0f, "Attraction force distance cap");
 
-static Cube *cube;
-
 class World {
 public:
-  World(glm::vec3 gravity) {
+  World(glm::vec3 gravity) : player_(nullptr) {
     collisionConfiguration_ = new btDefaultCollisionConfiguration();
     dispatcher_ = new btCollisionDispatcher(collisionConfiguration_);
     broadphase_ = new btDbvtBroadphase();
@@ -75,11 +73,15 @@ public:
     cubes_.push_back(cube);
   }
 
+  void Player(Cube *cube) {
+    Add(cube);
+    player_ = cube;
+  }
+
   void Update(GLfloat deltaTime) {
     dynamicsWorld_->stepSimulation(deltaTime, 10);
 
-    // TODO(dzeromks): Cleanup, move some code up to Cube object
-    auto bigCube = cube->GetBody();
+    auto bigCube = player_->GetBody();
 
     int bias = 1;
     if (bigCube->wantsSleeping()) {
@@ -142,4 +144,5 @@ private:
   btRigidBody *groundRigidBody_;
 
   std::vector<Cube *> cubes_;
+  Cube *player_;
 };

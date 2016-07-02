@@ -48,8 +48,6 @@ DEFINE_int32(cubes_count, 15, "Small cube dimension");
 DEFINE_int32(player_scale, 4, "Player cube scale");
 DEFINE_double(player_mass, 1e3f, "Player cube mass");
 
-// static Cube *cube = nullptr;
-static World *world = nullptr;
 static GLFWwindow *window = nullptr;
 
 #define INPUT_UP (1 << 0)
@@ -61,7 +59,7 @@ static GLFWwindow *window = nullptr;
 static uint8_t input;
 static CircularBuffer<uint8_t, 60> input_history;
 
-void handle_input(uint8_t input) {
+void handle_input(World *world, Cube *cube, uint8_t input) {
   if (input & INPUT_UP) {
     cube->Force(glm::vec3(0.f, 0.f, -1.f));
   }
@@ -189,7 +187,7 @@ int main(int argc, char *argv[]) {
 
   gDeactivationTime = btScalar(1.);
 
-  world = new World(glm::vec3(0, -20, 0));
+  auto world = new World(glm::vec3(0, -20, 0));
   for (int i = -FLAGS_cubes_count; i < FLAGS_cubes_count; ++i) {
     for (int j = -FLAGS_cubes_count; j < FLAGS_cubes_count; ++j) {
       glm::vec3 pos = glm::vec3(i * 2, 0.5f, j * 2);
@@ -198,9 +196,9 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  cube =
+  auto cube =
       new Cube(glm::vec3(0, 15, 0), &cm, FLAGS_player_scale, FLAGS_player_mass);
-  world->Add(cube);
+  world->Player(cube);
 
   GLfloat deltaTime = 0.0f; // Time between current frame and last frame
   GLfloat lastFrame = 0.0f; // Time of last frame
@@ -226,7 +224,7 @@ int main(int argc, char *argv[]) {
 
     input = 0;
     glfwPollEvents();
-    handle_input(input_history[hud->GetInputDelay() * -1]);
+    handle_input(world, cube, input_history[hud->GetInputDelay() * -1]);
     input_history.append(input);
 
     // glDepthMask(GL_TRUE);
