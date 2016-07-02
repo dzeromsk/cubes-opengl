@@ -35,7 +35,7 @@
 class HUD {
 public:
   HUD(GLFWwindow *window)
-      : delay_(30), input_delay_(1), last_update_(0), frames_(0) {
+      : delay_(1), input_delay_(1), last_update_(0), frames_(0) {
     ctx_ = nk_glfw3_init(window, NK_GLFW3_INSTALL_CALLBACKS);
     struct nk_font_atlas *atlas;
     nk_glfw3_font_stash_begin(&atlas);

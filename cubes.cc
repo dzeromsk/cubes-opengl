@@ -212,6 +212,8 @@ int main(int argc, char *argv[]) {
   glViewport(0, 0, FLAGS_width, FLAGS_height);
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
 
+  world->Update(1);
+
   while (glfwWindowShouldClose(window) == false) {
     uv_run(loop, UV_RUN_NOWAIT);
 

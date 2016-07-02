@@ -28,7 +28,7 @@
 #include "cube.h"
 
 DEFINE_double(force, 8e3f, "Attraction force");
-DEFINE_double(force_distance, 4.0f, "Attraction force distance cap");
+DEFINE_double(force_distance, 5.0f, "Attraction force distance cap");
 
 class World {
 public:
