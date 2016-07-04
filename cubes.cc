@@ -153,6 +153,36 @@ void window_size_callback(GLFWwindow *window, int width, int height) {
   glViewport(0, 0, width, height);
 }
 
+static void on_send(uv_udp_send_t *req, int status) {
+  CHECK(req != NULL);
+  CHECK(status == 0);
+  CHECK(req->handle);
+
+  free(req);
+}
+
+static void on_recv(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
+                    const struct sockaddr *addr, unsigned flags) {
+  CHECK(handle);
+  CHECK(flags == 0);
+  CHECK(addr != NULL);
+
+  uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
+  uv_buf_t sndbuf;
+  sndbuf = uv_buf_init("PONG", 4);
+  uv_udp_send(req, handle, &sndbuf, 1, addr, on_send);
+}
+
+static void on_alloc(uv_handle_t *handle, size_t suggested_size,
+                     uv_buf_t *buf) {
+  static char slab[65536];
+
+  CHECK(handle);
+  CHECK(suggested_size <= sizeof(slab));
+
+  *buf = uv_buf_init(slab, sizeof(slab));
+}
+
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
@@ -212,6 +242,14 @@ int main(int argc, char *argv[]) {
   glViewport(0, 0, FLAGS_width, FLAGS_height);
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
 
+  struct sockaddr_in addr;
+  CHECK(uv_ip4_addr("0.0.0.0", 3389, &addr) == 0);
+
+  uv_udp_t server;
+  CHECK(uv_udp_init(loop, &server) == 0);
+  CHECK(uv_udp_bind(&server, (const struct sockaddr *)&addr, 0) == 0);
+  CHECK(uv_udp_recv_start(&server, on_alloc, on_recv) == 0);
+
   world->Update(1);
 
   while (glfwWindowShouldClose(window) == false) {
@@ -245,8 +283,8 @@ int main(int argc, char *argv[]) {
 
     // glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
-    if (FLAGS_show_origin)
-      world->Draw(view, projection);
+    // if (FLAGS_show_origin)
+    world->Draw(view, projection);
 
     hud->Draw();
 
@@ -255,6 +293,7 @@ int main(int argc, char *argv[]) {
 
   glfwTerminate();
   uv_loop_close(loop);
+  uv_udp_recv_stop(&server);
 
   return EXIT_SUCCESS;
 }
