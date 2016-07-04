@@ -66,7 +66,7 @@ static GLFWwindow *window = nullptr;
 static uint8_t input;
 static CircularBuffer<uint8_t, 60> input_history;
 
-void handle_input(World *world, Cube *cube, uint8_t input) {
+void OnInput(World *world, Cube *cube, uint8_t input) {
   if (input & INPUT_UP) {
     cube->Force(glm::vec3(0.f, 0.f, -1.f));
   }
@@ -86,8 +86,7 @@ void handle_input(World *world, Cube *cube, uint8_t input) {
   // }
 }
 
-void key_callback(GLFWwindow *window, int key, int scancode, int action,
-                  int mode) {
+void OnKey(GLFWwindow *window, int key, int scancode, int action, int mode) {
   UNUSED(scancode);
   UNUSED(mode);
 
@@ -152,14 +151,14 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action,
   }
 }
 
-void window_size_callback(GLFWwindow *window, int width, int height) {
+void OnWindowResize(GLFWwindow *window, int width, int height) {
   UNUSED(window);
   FLAGS_width = width;
   FLAGS_height = height;
   glViewport(0, 0, width, height);
 }
 
-static void on_send(uv_udp_send_t *req, int status) {
+static void OnSend(uv_udp_send_t *req, int status) {
   CHECK(req != NULL);
   CHECK(status == 0);
   CHECK(req->handle);
@@ -167,8 +166,8 @@ static void on_send(uv_udp_send_t *req, int status) {
   free(req);
 }
 
-static void on_recv(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
-                    const struct sockaddr *addr, unsigned flags) {
+static void OnReceive(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
+                      const struct sockaddr *addr, unsigned flags) {
   CHECK(handle);
   CHECK(flags == 0);
   if (nread <= 0)
@@ -179,11 +178,11 @@ static void on_recv(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
   uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
   uv_buf_t sndbuf;
   sndbuf = uv_buf_init("PONG", 4);
-  uv_udp_send(req, handle, &sndbuf, 1, addr, on_send);
+  uv_udp_send(req, handle, &sndbuf, 1, addr, OnSend);
 }
 
-static void on_alloc(uv_handle_t *handle, size_t suggested_size,
-                     uv_buf_t *buf) {
+static void OnAllocate(uv_handle_t *handle, size_t suggested_size,
+                       uv_buf_t *buf) {
   static char slab[65536];
 
   CHECK(handle);
@@ -216,8 +215,8 @@ int main(int argc, char *argv[]) {
 
   CHECK(gladLoadGL() == GL_TRUE);
 
-  glfwSetKeyCallback(window, key_callback);
-  glfwSetWindowSizeCallback(window, window_size_callback);
+  glfwSetKeyCallback(window, OnKey);
+  glfwSetWindowSizeCallback(window, OnWindowResize);
   glfwSwapInterval(1);
 
   GLuint shaderProgram =
@@ -258,7 +257,7 @@ int main(int argc, char *argv[]) {
   uv_udp_t server;
   CHECK(uv_udp_init(loop, &server) == 0);
   CHECK(uv_udp_bind(&server, (const struct sockaddr *)&addr, 0) == 0);
-  CHECK(uv_udp_recv_start(&server, on_alloc, on_recv) == 0);
+  CHECK(uv_udp_recv_start(&server, OnAllocate, OnReceive) == 0);
 
   world->Update(1);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -280,7 +279,7 @@ int main(int argc, char *argv[]) {
       ScopedProfilingLabel label("Pool events");
       input = 0;
       glfwPollEvents();
-      handle_input(world, cube, input_history[hud->GetInputDelay() * -1]);
+      OnInput(world, cube, input_history[hud->GetInputDelay() * -1]);
       input_history.append(input);
     }
 
