@@ -28,6 +28,10 @@
 
 #include "cube_model.h"
 
+#define GEMMLOWP_PROFILING
+#include "third_party/profiling/instrumentation.h"
+using gemmlowp::ScopedProfilingLabel;
+
 template <typename type, size_t size = 10> class CircularBuffer {
 public:
   CircularBuffer() : n_(0) { memset(array_, 0, sizeof(array_)); }
@@ -98,6 +102,7 @@ public:
   btRigidBody *GetBody() { return body_; }
 
   void Update() {
+    ScopedProfilingLabel label("Cube::Update()");
     {
       // move
       btTransform trans;
@@ -137,6 +142,7 @@ public:
 
   void Draw(const glm::mat4 &model, const glm::mat4 &view,
             const glm::mat4 &projection) {
+    ScopedProfilingLabel label("Cube::Draw()");
     // scale
     glm::mat4 scaled = glm::scale(model, glm::vec3(scale_));
 

@@ -27,6 +27,10 @@
 
 #include "cube.h"
 
+#define GEMMLOWP_PROFILING
+#include "third_party/profiling/instrumentation.h"
+using gemmlowp::ScopedProfilingLabel;
+
 DEFINE_double(force, 9e3f, "Attraction force");
 DEFINE_double(force_distance, 4.5f, "Attraction force distance cap");
 
@@ -79,42 +83,53 @@ public:
   }
 
   void Update(GLfloat deltaTime) {
-    dynamicsWorld_->stepSimulation(deltaTime, 10);
+    ScopedProfilingLabel label("World::Update()");
 
-    auto bigCube = player_->GetBody();
-
-    int bias = 1;
-    if (bigCube->wantsSleeping()) {
-      bias = -1;
+    {
+      ScopedProfilingLabel label("Bullet step simulation");
+      dynamicsWorld_->stepSimulation(deltaTime, 10);
     }
 
-    for (auto const c : cubes_) {
-      c->Update();
+    {
+      auto bigCube = player_->GetBody();
 
-      auto cube = c->GetBody();
-      if (cube->wantsSleeping()) {
-        continue;
+      int bias = 1;
+      if (bigCube->wantsSleeping()) {
+        bias = -1;
       }
 
-      if (cube == bigCube) {
-        continue;
-      }
+      for (auto const c : cubes_) {
+        c->Update();
 
-      btVector3 difference =
-          bigCube->getCenterOfMassPosition() - cube->getCenterOfMassPosition();
+        {
+          ScopedProfilingLabel label("Katamari effect");
+          auto cube = c->GetBody();
+          if (cube->wantsSleeping()) {
+            continue;
+          }
 
-      btScalar distanceSquared = difference.length2();
-      btScalar distance = difference.length();
+          if (cube == bigCube) {
+            continue;
+          }
 
-      if (distance < FLAGS_force_distance) {
-        btVector3 direction = difference / distance * bias;
-        btScalar magnitude = FLAGS_force / distanceSquared;
-        cube->applyCentralForce(direction * magnitude);
+          btVector3 difference = bigCube->getCenterOfMassPosition() -
+                                 cube->getCenterOfMassPosition();
+
+          btScalar distanceSquared = difference.length2();
+          btScalar distance = difference.length();
+
+          if (distance < FLAGS_force_distance) {
+            btVector3 direction = difference / distance * bias;
+            btScalar magnitude = FLAGS_force / distanceSquared;
+            cube->applyCentralForce(direction * magnitude);
+          }
+        }
       }
     }
   }
 
   void Draw(const glm::mat4 &view, const glm::mat4 &projection) {
+    ScopedProfilingLabel label("World::Draw()");
     for (auto const cube : cubes_) {
       cube->Draw(view, projection);
     }
@@ -122,6 +137,7 @@ public:
 
   void Draw(const int model, const glm::mat4 &view,
             const glm::mat4 &projection) {
+    ScopedProfilingLabel label("World::Draw(model)");
     for (auto const cube : cubes_) {
       cube->Draw(model, view, projection);
     }

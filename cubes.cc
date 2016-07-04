@@ -40,6 +40,12 @@
 #include "shader_builder.h"
 #include "world.h"
 
+#define GEMMLOWP_PROFILING
+#include "third_party/profiling/instrumentation.h"
+#include "third_party/profiling/profiler.h"
+namespace prof = gemmlowp;
+using gemmlowp::ScopedProfilingLabel;
+
 #define UNUSED(x) (void)(x)
 
 DEFINE_bool(show_origin, true, "Render \"server\" cube");
@@ -165,6 +171,9 @@ static void on_recv(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
                     const struct sockaddr *addr, unsigned flags) {
   CHECK(handle);
   CHECK(flags == 0);
+  if (nread <= 0)
+    return;
+
   CHECK(addr != NULL);
 
   uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
@@ -186,6 +195,7 @@ static void on_alloc(uv_handle_t *handle, size_t suggested_size,
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
+  prof::RegisterCurrentThreadForProfiling();
 
   uv_loop_t *loop;
   CHECK(loop = uv_default_loop());
@@ -243,7 +253,7 @@ int main(int argc, char *argv[]) {
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
 
   struct sockaddr_in addr;
-  CHECK(uv_ip4_addr("0.0.0.0", 3389, &addr) == 0);
+  CHECK(uv_ip4_addr("127.0.0.1", 3389, &addr) == 0);
 
   uv_udp_t server;
   CHECK(uv_udp_init(loop, &server) == 0);
@@ -251,45 +261,75 @@ int main(int argc, char *argv[]) {
   CHECK(uv_udp_recv_start(&server, on_alloc, on_recv) == 0);
 
   world->Update(1);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+  prof::StartProfiling();
 
   while (glfwWindowShouldClose(window) == false) {
-    uv_run(loop, UV_RUN_NOWAIT);
-
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_MULTISAMPLE);
     glBlendFunc(GL_ONE, GL_SRC_ALPHA);
-
-    GLfloat currentFrame = glfwGetTime();
-    deltaTime = currentFrame - lastFrame;
-    lastFrame = currentFrame;
-
-    input = 0;
-    glfwPollEvents();
-    handle_input(world, cube, input_history[hud->GetInputDelay() * -1]);
-    input_history.append(input);
-
-    // glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glm::mat4 projection = glm::perspective(
+    {
+      ScopedProfilingLabel label("UV Loop");
+      uv_run(loop, UV_RUN_NOWAIT);
+    }
+
+    {
+      ScopedProfilingLabel label("Pool events");
+      input = 0;
+      glfwPollEvents();
+      handle_input(world, cube, input_history[hud->GetInputDelay() * -1]);
+      input_history.append(input);
+    }
+
+    {
+      ScopedProfilingLabel label("Time");
+
+      GLfloat currentFrame = glfwGetTime();
+      deltaTime = currentFrame - lastFrame;
+      lastFrame = currentFrame;
+    }
+
+    {
+      ScopedProfilingLabel label("Clear");
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
+
+    glm::mat4 view;
+    glm::mat4 projection;
+    projection = glm::perspective(
         45.0f, (GLfloat)FLAGS_width / (GLfloat)FLAGS_height, 0.1f, 100.0f);
 
     auto c = cube->Position(hud->GetDelay() * -1);
-    glm::mat4 view = glm::lookAt(c + glm::vec3(0.f, 15.f, 25.f), c, cameraUp);
+    view = glm::lookAt(c + glm::vec3(0.f, 15.f, 25.f), c, cameraUp);
 
     world->Update(deltaTime);
-    world->Draw(hud->GetDelay() * -1, view, projection);
 
-    // glDepthMask(GL_FALSE);
-    glEnable(GL_BLEND);
-    // if (FLAGS_show_origin)
-    world->Draw(view, projection);
+    {
+      ScopedProfilingLabel label("Draw");
+      {
+        ScopedProfilingLabel label("Default draw");
+        world->Draw(hud->GetDelay() * -1, view, projection);
+      }
 
-    hud->Draw();
+      if (FLAGS_show_origin) {
+        ScopedProfilingLabel label("Blend draw");
+        glEnable(GL_BLEND);
+        world->Draw(view, projection);
+      }
 
-    glfwSwapBuffers(window);
+      hud->Draw();
+
+      {
+        ScopedProfilingLabel label("glfwSwapBuffers");
+        glfwSwapBuffers(window);
+      }
+    }
   }
+
+  prof::FinishProfiling();
 
   glfwTerminate();
   uv_loop_close(loop);

@@ -29,6 +29,10 @@
 #include "third_party/nuklear/nuklear.h"
 #include "third_party/nuklear/nuklear_glfw_gl3.h"
 
+#define GEMMLOWP_PROFILING
+#include "third_party/profiling/instrumentation.h"
+using gemmlowp::ScopedProfilingLabel;
+
 #define MAX_VERTEX_BUFFER 512 * 1024
 #define MAX_ELEMENT_BUFFER 128 * 1024
 
@@ -43,6 +47,8 @@ public:
   }
 
   void Draw() {
+    ScopedProfilingLabel label("HUD::Draw()");
+
     GLfloat now = glfwGetTime();
 
     if (now - last_update_ >= 1.0) {
