@@ -48,6 +48,11 @@ using gemmlowp::ScopedProfilingLabel;
 
 #define UNUSED(x) (void)(x)
 
+struct ServerData {
+  World *world;
+  Cube *cube;
+};
+
 DEFINE_bool(show_origin, true, "Render \"server\" cube");
 DEFINE_int32(width, 1280, "Window width");
 DEFINE_int32(height, 800, "Windows height");
@@ -166,8 +171,24 @@ static void OnSend(uv_udp_send_t *req, int status) {
   free(req);
 }
 
-static void OnReceive(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
-                      const struct sockaddr *addr, unsigned flags) {
+static void OnServerReceive(uv_udp_t *handle, ssize_t nread,
+                            const uv_buf_t *buf, const struct sockaddr *addr,
+                            unsigned flags) {
+  // linux will always try to read from socket
+  if (nread <= 0)
+    return;
+
+  CHECK(handle);
+  CHECK(buf);
+
+  auto data = (struct ServerData *)handle->data;
+  auto input = *(uint8_t *)buf->base;
+  OnInput(data->world, data->cube, input);
+}
+
+static void OnClientReceive(uv_udp_t *handle, ssize_t nread,
+                            const uv_buf_t *buf, const struct sockaddr *addr,
+                            unsigned flags) {
   CHECK(handle);
   CHECK(flags == 0);
   if (nread <= 0)
@@ -175,10 +196,7 @@ static void OnReceive(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
 
   CHECK(addr != NULL);
 
-  uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
-  uv_buf_t sndbuf;
-  sndbuf = uv_buf_init("PONG", 4);
-  uv_udp_send(req, handle, &sndbuf, 1, addr, OnSend);
+  printf("Got response!\n");
 }
 
 static void OnAllocate(uv_handle_t *handle, size_t suggested_size,
@@ -257,7 +275,14 @@ int main(int argc, char *argv[]) {
   uv_udp_t server;
   CHECK(uv_udp_init(loop, &server) == 0);
   CHECK(uv_udp_bind(&server, (const struct sockaddr *)&addr, 0) == 0);
-  CHECK(uv_udp_recv_start(&server, OnAllocate, OnReceive) == 0);
+  CHECK(uv_udp_recv_start(&server, OnAllocate, OnServerReceive) == 0);
+
+  struct ServerData data = {world, cube};
+  server.data = &data;
+
+  uv_udp_t client;
+  CHECK(uv_udp_init(loop, &client) == 0);
+  CHECK(uv_udp_recv_start(&client, OnAllocate, OnClientReceive) == 0);
 
   world->Update(1);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -278,9 +303,15 @@ int main(int argc, char *argv[]) {
     {
       ScopedProfilingLabel label("Pool events");
       input = 0;
+
       glfwPollEvents();
-      OnInput(world, cube, input_history[hud->GetInputDelay() * -1]);
       input_history.append(input);
+
+      uint8_t delayed_input = input_history[hud->GetInputDelay() * -1];
+
+      uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
+      uv_buf_t buf = uv_buf_init((char *)&delayed_input, sizeof(delayed_input));
+      uv_udp_send(req, &client, &buf, 1, (struct sockaddr *)&addr, OnSend);
     }
 
     {
@@ -332,6 +363,7 @@ int main(int argc, char *argv[]) {
 
   glfwTerminate();
   uv_loop_close(loop);
+  uv_udp_recv_stop(&client);
   uv_udp_recv_stop(&server);
 
   return EXIT_SUCCESS;
