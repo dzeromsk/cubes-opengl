@@ -226,7 +226,8 @@ static void OnTick(uv_timer_t *handle) {
 }
 
 void Server(CubeModel *cm) {
-  // prof::RegisterCurrentThreadForProfiling();
+  prof::RegisterCurrentThreadForProfiling();
+  ScopedProfilingLabel label("Server thread");
 
   uv_loop_t loop;
   CHECK(uv_loop_init(&loop) == 0);
@@ -267,8 +268,10 @@ void Server(CubeModel *cm) {
   CHECK(uv_timer_init(&loop, &timer) == 0);
   CHECK(uv_timer_start(&timer, OnTick, 1, 15) == 0);
 
-  uv_run(&loop, UV_RUN_DEFAULT);
-
+  {
+    ScopedProfilingLabel label("Server loop");
+    uv_run(&loop, UV_RUN_DEFAULT);
+  }
   uv_loop_close(&loop);
   uv_udp_recv_stop(&server);
 }
@@ -373,7 +376,8 @@ int main(int argc, char *argv[]) {
       OnInput(server_world, server_cube, delayed_input);
 
       // uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
-      // uv_buf_t buf = uv_buf_init((char *)&delayed_input, sizeof(delayed_input));
+      // uv_buf_t buf = uv_buf_init((char *)&delayed_input,
+      // sizeof(delayed_input));
       // uv_udp_send(req, &client, &buf, 1, (struct sockaddr *)&addr, OnSend);
     }
 
