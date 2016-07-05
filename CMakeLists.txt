@@ -104,12 +104,12 @@ target_link_libraries (cubes
 )
 
 if (WIN32)
-  target_compile_options (cubes PUBLIC /W4)
+  target_compile_options (cubes PUBLIC /W4 /fp:strict)
   target_link_libraries (cubes ws2_32 iphlpapi psapi userenv)
 endif (WIN32)
 
 if (UNIX)
-  target_compile_options (cubes PUBLIC -Wextra -std=c++14)
+  target_compile_options (cubes PUBLIC -g -Wextra -std=c++14)
   target_link_libraries (cubes dl)
 endif (UNIX)
 

@@ -75,7 +75,9 @@ public:
       body_->updateDeactivation(10.0f);
     }
 
-    cubeModel_->Color(glm::vec3(1.0f, 1.0f, 1.0f));
+    if (cubeModel_) {
+      cubeModel_->Color(glm::vec3(1.0f, 1.0f, 1.0f));
+    }
   }
 
   ~Cube() {

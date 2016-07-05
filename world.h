@@ -41,6 +41,7 @@ public:
     dispatcher_ = new btCollisionDispatcher(collisionConfiguration_);
     broadphase_ = new btDbvtBroadphase();
     solver_ = new btSequentialImpulseConstraintSolver();
+    solver_->setRandSeed(0);
     dynamicsWorld_ = new btDiscreteDynamicsWorld(
         dispatcher_, broadphase_, solver_, collisionConfiguration_);
     dynamicsWorld_->setGravity(btVector3(gravity.x, gravity.y, gravity.z));
@@ -87,7 +88,7 @@ public:
 
     {
       ScopedProfilingLabel label("Bullet step simulation");
-      dynamicsWorld_->stepSimulation(deltaTime, 10);
+      dynamicsWorld_->stepSimulation(deltaTime, 100);
     }
 
     {

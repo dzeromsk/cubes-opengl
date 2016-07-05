@@ -31,6 +31,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <thread>
 #include <vector>
 
 #include "cube.h"
@@ -61,6 +62,9 @@ DEFINE_int32(player_scale, 4, "Player cube scale");
 DEFINE_double(player_mass, 1e3f, "Player cube mass");
 
 static GLFWwindow *window = nullptr;
+
+static World *server_world = nullptr;
+static Cube *server_cube = nullptr;
 
 #define INPUT_UP (1 << 0)
 #define INPUT_DOWN (1 << 1)
@@ -180,9 +184,9 @@ static void OnServerReceive(uv_udp_t *handle, ssize_t nread,
 
   CHECK(handle);
   CHECK(buf);
-
   auto data = (struct ServerData *)handle->data;
   auto input = *(uint8_t *)buf->base;
+
   OnInput(data->world, data->cube, input);
 }
 
@@ -207,6 +211,66 @@ static void OnAllocate(uv_handle_t *handle, size_t suggested_size,
   CHECK(suggested_size <= sizeof(slab));
 
   *buf = uv_buf_init(slab, sizeof(slab));
+}
+
+static void OnTick(uv_timer_t *handle) {
+  static GLfloat lastFrame = 0.0f;
+
+  auto data = (struct ServerData *)handle->data;
+
+  GLfloat currentFrame = glfwGetTime();
+  GLfloat deltaTime = currentFrame - lastFrame;
+  lastFrame = currentFrame;
+
+  data->world->Update(deltaTime);
+}
+
+void Server(CubeModel *cm) {
+  // prof::RegisterCurrentThreadForProfiling();
+
+  uv_loop_t loop;
+  CHECK(uv_loop_init(&loop) == 0);
+
+  struct sockaddr_in addr;
+  CHECK(uv_ip4_addr("127.0.0.1", 3389, &addr) == 0);
+
+  uv_udp_t server;
+  CHECK(uv_udp_init(&loop, &server) == 0);
+  CHECK(uv_udp_bind(&server, (const struct sockaddr *)&addr, 0) == 0);
+  CHECK(uv_udp_recv_start(&server, OnAllocate, OnServerReceive) == 0);
+
+  gDeactivationTime = btScalar(1.f);
+
+  auto world = new World(glm::vec3(0, -20, 0));
+  for (int i = -FLAGS_cubes_count; i < FLAGS_cubes_count; ++i) {
+    for (int j = -FLAGS_cubes_count; j < FLAGS_cubes_count; ++j) {
+      glm::vec3 pos = glm::vec3(i * 2, 0.5f, j * 2);
+      Cube *c = new Cube(pos, cm);
+      world->Add(c);
+    }
+  }
+  server_world = world;
+
+  auto cube =
+      new Cube(glm::vec3(0, 15, 0), cm, FLAGS_player_scale, FLAGS_player_mass);
+  world->Player(cube);
+  server_cube = cube;
+
+  world->Reset();
+
+  struct ServerData data = {world, cube};
+  server.data = &data;
+
+  uv_timer_t timer;
+  timer.data = &data;
+
+  CHECK(uv_timer_init(&loop, &timer) == 0);
+  CHECK(uv_timer_start(&timer, OnTick, 1, 15) == 0);
+
+  uv_run(&loop, UV_RUN_DEFAULT);
+
+  uv_loop_close(&loop);
+  uv_udp_recv_stop(&server);
 }
 
 int main(int argc, char *argv[]) {
@@ -243,7 +307,10 @@ int main(int argc, char *argv[]) {
   CubeModel cm(shaderProgram);
   cm.Data(kVertices, kVerticesSize);
 
-  gDeactivationTime = btScalar(1.);
+  std::thread server(Server, &cm);
+  server.detach();
+
+  gDeactivationTime = btScalar(1.f);
 
   auto world = new World(glm::vec3(0, -20, 0));
   for (int i = -FLAGS_cubes_count; i < FLAGS_cubes_count; ++i) {
@@ -257,6 +324,8 @@ int main(int argc, char *argv[]) {
   auto cube =
       new Cube(glm::vec3(0, 15, 0), &cm, FLAGS_player_scale, FLAGS_player_mass);
   world->Player(cube);
+
+  world->Reset();
 
   GLfloat deltaTime = 0.0f; // Time between current frame and last frame
   GLfloat lastFrame = 0.0f; // Time of last frame
@@ -272,19 +341,10 @@ int main(int argc, char *argv[]) {
   struct sockaddr_in addr;
   CHECK(uv_ip4_addr("127.0.0.1", 3389, &addr) == 0);
 
-  uv_udp_t server;
-  CHECK(uv_udp_init(loop, &server) == 0);
-  CHECK(uv_udp_bind(&server, (const struct sockaddr *)&addr, 0) == 0);
-  CHECK(uv_udp_recv_start(&server, OnAllocate, OnServerReceive) == 0);
-
-  struct ServerData data = {world, cube};
-  server.data = &data;
-
   uv_udp_t client;
   CHECK(uv_udp_init(loop, &client) == 0);
   CHECK(uv_udp_recv_start(&client, OnAllocate, OnClientReceive) == 0);
 
-  world->Update(1);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   prof::StartProfiling();
@@ -294,6 +354,7 @@ int main(int argc, char *argv[]) {
     glEnable(GL_MULTISAMPLE);
     glBlendFunc(GL_ONE, GL_SRC_ALPHA);
     glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
 
     {
       ScopedProfilingLabel label("UV Loop");
@@ -301,17 +362,19 @@ int main(int argc, char *argv[]) {
     }
 
     {
-      ScopedProfilingLabel label("Pool events");
+      ScopedProfilingLabel label("Poll events");
       input = 0;
 
       glfwPollEvents();
       input_history.append(input);
-
       uint8_t delayed_input = input_history[hud->GetInputDelay() * -1];
 
-      uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
-      uv_buf_t buf = uv_buf_init((char *)&delayed_input, sizeof(delayed_input));
-      uv_udp_send(req, &client, &buf, 1, (struct sockaddr *)&addr, OnSend);
+      OnInput(world, cube, delayed_input);
+      OnInput(server_world, server_cube, delayed_input);
+
+      // uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
+      // uv_buf_t buf = uv_buf_init((char *)&delayed_input, sizeof(delayed_input));
+      // uv_udp_send(req, &client, &buf, 1, (struct sockaddr *)&addr, OnSend);
     }
 
     {
@@ -330,7 +393,7 @@ int main(int argc, char *argv[]) {
     glm::mat4 view;
     glm::mat4 projection;
     projection = glm::perspective(
-        45.0f, (GLfloat)FLAGS_width / (GLfloat)FLAGS_height, 0.1f, 100.0f);
+        45.0f, (GLfloat)FLAGS_width / (GLfloat)FLAGS_height, 1.0f, 100.0f);
 
     auto c = cube->Position(hud->GetDelay() * -1);
     view = glm::lookAt(c + glm::vec3(0.f, 15.f, 25.f), c, cameraUp);
@@ -341,13 +404,17 @@ int main(int argc, char *argv[]) {
       ScopedProfilingLabel label("Draw");
       {
         ScopedProfilingLabel label("Default draw");
+        glDisable(GL_BLEND);
+        // glEnable(GL_DEPTH_TEST);
         world->Draw(hud->GetDelay() * -1, view, projection);
       }
 
       if (FLAGS_show_origin) {
         ScopedProfilingLabel label("Blend draw");
         glEnable(GL_BLEND);
-        world->Draw(view, projection);
+        // glDisable(GL_DEPTH_TEST);
+        // world->Draw(view, projection);
+        server_world->Draw(view, projection);
       }
 
       hud->Draw();
@@ -364,7 +431,6 @@ int main(int argc, char *argv[]) {
   glfwTerminate();
   uv_loop_close(loop);
   uv_udp_recv_stop(&client);
-  uv_udp_recv_stop(&server);
 
   return EXIT_SUCCESS;
 }
