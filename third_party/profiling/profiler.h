@@ -148,6 +148,8 @@
 #endif
 
 #include <vector>
+#include <thread>
+#include <chrono>
 
 #include "instrumentation.h"
 
@@ -258,20 +260,14 @@ class ProfileTreeView {
 
 // This function is the only place that determines our sampling frequency.
 inline void WaitOneProfilerTick() {
-  static const int millisecond = 1000000;
-
 #if defined __arm__ || defined __aarch64__
   // Reduced sampling frequency on mobile devices helps limit time and memory
   // overhead there.
-  static const int interval = 10 * millisecond;
+  static const int interval = 10;
 #else
-  static const int interval = 1 * millisecond;
+  static const int interval = 1;
 #endif
-
-  timespec ts;
-  ts.tv_sec = 0;
-  ts.tv_nsec = interval;
-  nanosleep(&ts, nullptr);
+  std::this_thread::sleep_for(std::chrono::milliseconds(interval));
 }
 
 // This is how we track whether we've already started profiling,
@@ -288,8 +284,8 @@ inline bool& ProfilerThreadShouldFinish() {
 }
 
 // The profiler thread. See ProfilerThreadFunc.
-inline pthread_t& ProfilerThread() {
-  static pthread_t t;
+inline std::thread& ProfilerThread() {
+  static std::thread t;
   return t;
 }
 
@@ -320,9 +316,7 @@ inline void RecordStack(const ThreadInfo* thread, ProfilingStack* dst) {
 // StartProfiling(), and finishes when we call FinishProfiling().
 // So here we only need to handle the recording and reporting of
 // a single profile.
-inline void* ProfilerThreadFunc(void*) {
-  assert(ProfilerThread() == pthread_self());
-
+inline void ProfilerThreadFunc() {
   // Since we only handle one profile per profiler thread, the
   // profile data (the array of recorded stacks) can be a local variable here.
   std::vector<ProfilingStack> stacks;
@@ -341,8 +335,6 @@ inline void* ProfilerThreadFunc(void*) {
 
   // Profiling is finished and we now report the results.
   ProfileTreeView(stacks).Print();
-
-  return nullptr;
 }
 
 // Starts recording samples.
@@ -351,7 +343,7 @@ inline void StartProfiling() {
   ReleaseBuildAssertion(!IsProfiling(), "We're already profiling!");
   IsProfiling() = true;
   ProfilerThreadShouldFinish() = false;
-  pthread_create(&ProfilerThread(), nullptr, ProfilerThreadFunc, nullptr);
+  ProfilerThread() = std::thread(ProfilerThreadFunc);
 }
 
 // Stops recording samples, and prints a profile tree-view on stdout.
@@ -364,7 +356,7 @@ inline void FinishProfiling() {
     // Should we use a condition variable?
     ProfilerThreadShouldFinish() = true;
   }  // must release the lock here to avoid deadlock with profiler thread.
-  pthread_join(ProfilerThread(), nullptr);
+  ProfilerThread().join();
   IsProfiling() = false;  // yikes, this should be guarded by the lock!
 }
 

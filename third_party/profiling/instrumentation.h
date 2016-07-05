@@ -24,7 +24,7 @@
 #ifndef GEMMLOWP_PROFILING_INSTRUMENTATION_H_
 #define GEMMLOWP_PROFILING_INSTRUMENTATION_H_
 
-#include <pthread.h>
+#include <mutex>
 #include <cstdio>
 
 #ifndef GEMMLOWP_USE_STLPORT
@@ -52,15 +52,6 @@ using ::uintptr_t;
 #include <set>
 #endif
 
-// We should always use C++11 thread_local; unfortunately that
-// isn't fully supported on Apple yet.
-#ifdef __APPLE__
-#define GEMMLOWP_THREAD_LOCAL static __thread
-#define GEMMLOWP_USING_OLD_THREAD_LOCAL
-#else
-#define GEMMLOWP_THREAD_LOCAL thread_local
-#endif
-
 namespace gemmlowp {
 
 inline void ReleaseBuildAssertion(bool condition, const char* msg) {
@@ -80,14 +71,14 @@ struct ProfilerLockId;
 // locks, one for each LockId type.
 template <typename LockId>
 class GlobalLock {
-  static pthread_mutex_t* Mutex() {
-    static pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+  static std::mutex* Mutex() {
+    static std::mutex m;
     return &m;
   }
 
  public:
-  static void Lock() { pthread_mutex_lock(Mutex()); }
-  static void Unlock() { pthread_mutex_unlock(Mutex()); }
+  static void Lock() { Mutex()->lock(); }
+  static void Unlock() { Mutex()->unlock(); }
 };
 
 // A very simple RAII helper to lock and unlock a GlobalLock
@@ -104,7 +95,13 @@ struct AutoGlobalLock {
 //   2) It requires the compiler to assume that any value previously
 //     read from memory, may have changed. Thus it offers an alternative
 //     to using 'volatile' variables.
-inline void MemoryBarrier() { asm volatile("" ::: "memory"); }
+inline void MemoryBarrier() {
+#ifdef WIN32
+  _ReadWriteBarrier();
+#else
+  asm volatile("" ::: "memory");
+#endif
+}
 
 // Profiling definitions. Two paths: when profiling is enabled,
 // and when profiling is disabled.
@@ -168,35 +165,17 @@ inline std::set<ThreadInfo*>& ThreadsUnderProfiling() {
 }
 
 struct ThreadInfo {
-  pthread_key_t key;  // used only to get a callback at thread exit.
   ProfilingStack stack;
 
-  ThreadInfo() {
-    pthread_key_create(&key, ThreadExitCallback);
-    pthread_setspecific(key, this);
-  }
-
-  static void ThreadExitCallback(void* ptr) {
-    AutoGlobalLock<ProfilerLockId> lock;
-    ThreadInfo* self = static_cast<ThreadInfo*>(ptr);
-    ThreadsUnderProfiling().erase(self);
-    pthread_key_delete(self->key);
+  ~ThreadInfo() {
+	  AutoGlobalLock<ProfilerLockId> lock;
+	  ThreadsUnderProfiling().erase(this);
   }
 };
 
 inline ThreadInfo& ThreadLocalThreadInfo() {
-#ifdef GEMMLOWP_USING_OLD_THREAD_LOCAL
-  // We're leaking this ThreadInfo structure, because Apple doesn't support
-  // non-trivial constructors or destructors for their __thread type modifier.
-  GEMMLOWP_THREAD_LOCAL ThreadInfo* i = nullptr;
-  if (i == nullptr) {
-    i = new ThreadInfo();
-  }
-  return *i;
-#else
-  GEMMLOWP_THREAD_LOCAL ThreadInfo i;
+  thread_local ThreadInfo i;
   return i;
-#endif
 }
 
 // ScopedProfilingLabel is how one instruments code for profiling
