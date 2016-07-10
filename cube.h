@@ -92,6 +92,7 @@ public:
                                   initial_position_.z));
     transform.setRotation(btQuaternion(0, 0, 0, 1));
     body_->setCenterOfMassTransform(transform);
+    body_->getMotionState()->setWorldTransform(transform);
     body_->setLinearVelocity(btVector3(0, 0, 0));
     body_->setAngularVelocity(btVector3(0, 0, 0));
     body_->clearForces();
@@ -162,6 +163,29 @@ public:
   }
 
   glm::vec3 Position(int i = -1) { return positions_[i]; }
+
+#pragma pack(push, 1)
+  struct State {
+    float position[3];
+    float orientation[4];
+    uint32_t interacting;
+  };
+#pragma pack(pop)
+
+  void Dump(State *state) {
+    const btVector3 &position = body_->getCenterOfMassPosition();
+    state->position[0] = position.getX();
+    state->position[1] = position.getY();
+    state->position[2] = position.getZ();
+
+    const btQuaternion orientation = body_->getOrientation();
+    state->orientation[0] = orientation.getX();
+    state->orientation[1] = orientation.getY();
+    state->orientation[2] = orientation.getZ();
+    state->orientation[3] = orientation.getW();
+
+    state->interacting = !body_->wantsSleeping();
+  }
 
 private:
   btCollisionShape *shape_;

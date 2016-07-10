@@ -52,6 +52,8 @@ using gemmlowp::ScopedProfilingLabel;
 struct ServerData {
   World *world;
   Cube *cube;
+  HUD *hud;
+  uv_udp_t* server;
 };
 
 DEFINE_bool(show_origin, true, "Render \"server\" cube");
@@ -65,6 +67,9 @@ static GLFWwindow *window = nullptr;
 
 static World *server_world = nullptr;
 static Cube *server_cube = nullptr;
+static HUD *hud = nullptr;
+
+static std::vector<struct sockaddr> active_clients;
 
 #define INPUT_UP (1 << 0)
 #define INPUT_DOWN (1 << 1)
@@ -187,6 +192,8 @@ static void OnServerReceive(uv_udp_t *handle, ssize_t nread,
   auto data = (struct ServerData *)handle->data;
   auto input = *(uint8_t *)buf->base;
 
+  active_clients.push_back(*addr);
+
   OnInput(data->world, data->cube, input);
 }
 
@@ -225,6 +232,25 @@ static void OnTick(uv_timer_t *handle) {
   data->world->Update(deltaTime);
 }
 
+static uv_udp_t server;
+
+static void OnDump(uv_timer_t *handle) {
+  static std::vector<Cube::State> state;
+
+  auto data = (struct ServerData *)handle->data;
+  state.clear();
+
+  //data->world->Dump(state);
+  data->hud->SetDumpSize(state.size() * sizeof(Cube::State));
+
+  // uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
+  // uv_buf_t buf =
+  //     uv_buf_init((char *)state.data(), state.size() * sizeof(Cube::State));
+  // for (const auto client : active_clients) {
+  //   uv_udp_send(req, data->server, &buf, 1, (struct sockaddr *)&client, OnSend);
+  // }
+}
+
 void Server(CubeModel *cm) {
   prof::RegisterCurrentThreadForProfiling();
   ScopedProfilingLabel label("Server thread");
@@ -250,6 +276,7 @@ void Server(CubeModel *cm) {
       world->Add(c);
     }
   }
+
   server_world = world;
 
   auto cube =
@@ -259,14 +286,18 @@ void Server(CubeModel *cm) {
 
   world->Reset();
 
-  struct ServerData data = {world, cube};
+  struct ServerData data = {world, cube, hud, &server};
   server.data = &data;
 
-  uv_timer_t timer;
-  timer.data = &data;
+  uv_timer_t update_timer;
+  update_timer.data = &data;
+  CHECK(uv_timer_init(&loop, &update_timer) == 0);
+  CHECK(uv_timer_start(&update_timer, OnTick, 1, 15) == 0);
 
-  CHECK(uv_timer_init(&loop, &timer) == 0);
-  CHECK(uv_timer_start(&timer, OnTick, 1, 15) == 0);
+  // uv_timer_t dump_timer;
+  // dump_timer.data = &data;
+  // CHECK(uv_timer_init(&loop, &dump_timer) == 0);
+  // CHECK(uv_timer_start(&dump_timer, OnDump, 1, 100) == 0);
 
   {
     ScopedProfilingLabel label("Server loop");
@@ -310,9 +341,6 @@ int main(int argc, char *argv[]) {
   CubeModel cm(shaderProgram);
   cm.Data(kVertices, kVerticesSize);
 
-  std::thread server(Server, &cm);
-  server.detach();
-
   gDeactivationTime = btScalar(1.f);
 
   auto world = new World(glm::vec3(0, -20, 0));
@@ -336,7 +364,7 @@ int main(int argc, char *argv[]) {
   glm::mat4 view;
   glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 
-  auto hud = new HUD(window);
+  hud = new HUD(window);
 
   glViewport(0, 0, FLAGS_width, FLAGS_height);
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
@@ -350,7 +378,12 @@ int main(int argc, char *argv[]) {
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+  std::thread server_thread(Server, &cm);
+  server_thread.detach();
+
   prof::StartProfiling();
+
+  FILE *f = fopen("models.log", "w");
 
   while (glfwWindowShouldClose(window) == false) {
     glEnable(GL_DEPTH_TEST);
@@ -372,13 +405,12 @@ int main(int argc, char *argv[]) {
       input_history.append(input);
       uint8_t delayed_input = input_history[hud->GetInputDelay() * -1];
 
-      OnInput(world, cube, delayed_input);
-      OnInput(server_world, server_cube, delayed_input);
+      //OnInput(world, cube, delayed_input);
+      //OnInput(server_world, server_cube, delayed_input);
 
-      // uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
-      // uv_buf_t buf = uv_buf_init((char *)&delayed_input,
-      // sizeof(delayed_input));
-      // uv_udp_send(req, &client, &buf, 1, (struct sockaddr *)&addr, OnSend);
+      uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
+      uv_buf_t buf = uv_buf_init((char *)&delayed_input, sizeof(delayed_input));
+      uv_udp_send(req, &client, &buf, 1, (struct sockaddr *)&addr, OnSend);
     }
 
     {
@@ -421,6 +453,12 @@ int main(int argc, char *argv[]) {
         server_world->Draw(view, projection);
       }
 
+      {
+        std::vector<Cube::State> state;
+        server_world->Dump(state);
+        fwrite(state.data(), sizeof(Cube::State), state.size(), f);
+      }
+
       hud->Draw();
 
       {
@@ -431,6 +469,8 @@ int main(int argc, char *argv[]) {
   }
 
   prof::FinishProfiling();
+
+  fclose(f);
 
   glfwTerminate();
   uv_loop_close(loop);

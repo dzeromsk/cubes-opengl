@@ -39,7 +39,7 @@ using gemmlowp::ScopedProfilingLabel;
 class HUD {
 public:
   HUD(GLFWwindow *window)
-      : delay_(1), input_delay_(1), last_update_(0), frames_(0) {
+      : delay_(1), input_delay_(1), last_update_(0), frames_(0), frame_counter_(0) {
     ctx_ = nk_glfw3_init(window, NK_GLFW3_INSTALL_CALLBACKS);
     struct nk_font_atlas *atlas;
     nk_glfw3_font_stash_begin(&atlas);
@@ -63,7 +63,7 @@ public:
 
     {
       struct nk_panel layout;
-      if (nk_begin(ctx_, &layout, "Cubes", nk_rect(50, 50, 230, 230),
+      if (nk_begin(ctx_, &layout, "Cubes", nk_rect(50, 50, 230, 430),
                    NK_WINDOW_BORDER | NK_WINDOW_MOVABLE |
                        NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE)) {
 
@@ -78,10 +78,16 @@ public:
         static const float ratio[] = {60, 135};
 
         nk_layout_row(ctx_, NK_STATIC, 25, 2, ratio);
+
         nk_label(ctx_, "FPS:", NK_TEXT_LEFT);
         int len = strlen(buffer_);
         nk_edit_string(ctx_, NK_EDIT_SIMPLE | NK_EDIT_READ_ONLY, buffer_, &len,
                        128, nk_filter_default);
+
+        nk_label(ctx_, "Dump size:", NK_TEXT_LEFT);
+        len = strlen(dump_size_);
+        nk_edit_string(ctx_, NK_EDIT_SIMPLE | NK_EDIT_READ_ONLY, dump_size_,
+                       &len, 128, nk_filter_default);
 
         nk_layout_row(ctx_, NK_STATIC, 25, 2, ratio);
         nk_label(ctx_, "Delay:", NK_TEXT_LEFT);
@@ -89,22 +95,33 @@ public:
         nk_layout_row(ctx_, NK_STATIC, 25, 2, ratio);
         nk_label(ctx_, "In Delay:", NK_TEXT_LEFT);
         nk_progress(ctx_, &input_delay_, 60, NK_MODIFIABLE);
+
+        nk_label(ctx_, "Frames", NK_TEXT_LEFT);
+        nk_value_int(ctx_, "", frame_counter_);
       }
       nk_end(ctx_);
     }
 
     nk_glfw3_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
+
+    frame_counter_++;
   }
 
   size_t GetDelay() { return delay_; }
   size_t GetInputDelay() { return input_delay_; }
+
+  void SetDumpSize(int sz) {
+    sprintf(dump_size_, "%d", sz);
+  }
 
 private:
   struct nk_context *ctx_;
   size_t delay_;
   size_t input_delay_;
   int frames_;
+  size_t frame_counter_;
   GLfloat last_update_;
   CircularBuffer<int, 30> fps_history_;
   char buffer_[256];
+  char dump_size_[200];
 };

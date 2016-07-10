@@ -113,3 +113,39 @@ if (UNIX)
   target_link_libraries (cubes dl)
 endif (UNIX)
 
+add_executable (client
+  client.cc
+)
+
+target_include_directories (client PUBLIC
+  third_party/libuv/libuv/include/
+  third_party/glad/include/
+  third_party/glfw/include/
+  third_party/gflags/include/
+  third_party/glog/
+  third_party/glm/
+)
+
+target_compile_definitions (client PUBLIC
+  -DGLFW_INCLUDE_NONE
+)
+
+target_link_libraries (client
+  uv
+  glfw
+  glad
+  glog
+  gflags
+  nuklear
+  ${GLFW_LIBRARIES} 
+)
+
+if (WIN32)
+  target_compile_options (client PUBLIC /W4 /fp:strict)
+  target_link_libraries (client ws2_32 iphlpapi psapi userenv)
+endif (WIN32)
+
+if (UNIX)
+  target_compile_options (client PUBLIC -g -Wextra -std=c++14)
+  target_link_libraries (client dl)
+endif (UNIX)
