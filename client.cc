@@ -22,6 +22,7 @@
 #include <glog/logging.h>
 #include <uv.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -65,23 +66,54 @@ static void ReadLog(std::string filename) {
   fclose(f);
 }
 
-static void OnFrame(uv_timer_t *frame_timer) {
-  static size_t frameno = 0;
-  if (frameno >= Log().size()) {
-    uv_stop(uv_default_loop());
-    return;
+class Loop {
+  friend class Timer;
+
+public:
+  static Loop &Default() {
+    static Loop loop(uv_default_loop());
+    return loop;
   }
 
-  printf("Frame #%lu\n", frameno);
+  Loop(uv_loop_t *loop) : loop_(loop) {}
+  Loop() : loop_(&loop_data_) { CHECK(uv_loop_init(&loop_data_) == 0); }
 
-  auto cube = Log()[frameno][FLAGS_cubes_count - 1];
-  printf("  Cube [(%f, %f %f), (%f, %f %f, %f), %s]\n", cube.position[0],
-         cube.position[1], cube.position[2], cube.orientation[0],
-         cube.orientation[1], cube.orientation[2], cube.orientation[3],
-         (cube.interacting) ? "true" : "false");
+  ~Loop() {
+    if (loop_ != nullptr) {
+      uv_loop_close(loop_);
+    }
+  }
 
-  frameno++;
-}
+  int Run() { return uv_run(loop_, UV_RUN_DEFAULT); }
+  void Stop() { uv_stop(loop_); }
+
+private:
+  uv_loop_t *loop_;
+  uv_loop_t loop_data_;
+};
+
+class Timer {
+public:
+  Timer(Loop *loop, std::function<void(Timer *)> callback, uint64_t repeat)
+      : loop_(loop), callback_(std::move(callback)), repeat_(repeat) {
+    timer_.data = this;
+    CHECK(uv_timer_init(loop->loop_, &timer_) == 0);
+    CHECK(uv_timer_start(&timer_, Timer::Wrapper, 1, repeat_) == 0);
+  }
+  ~Timer() { uv_timer_stop(&timer_); }
+
+  static void Wrapper(uv_timer_t *handle) {
+    ((Timer *)handle->data)->callback_((Timer *)handle->data);
+  }
+
+  Loop *GetLoop() { return loop_; }
+
+private:
+  uv_timer_t timer_;
+  std::function<void(Timer *)> callback_;
+  uint64_t repeat_;
+  Loop *loop_;
+};
 
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
@@ -90,12 +122,28 @@ int main(int argc, char *argv[]) {
   ReadLog(FLAGS_logfile);
   CHECK(Log().size() > 0);
 
-  uv_loop_t *loop;
-  CHECK(loop = uv_default_loop());
+  auto loop = Loop::Default();
 
-  uv_timer_t frame_timer;
-  CHECK(uv_timer_init(loop, &frame_timer) == 0);
-  CHECK(uv_timer_start(&frame_timer, OnFrame, 1, 16) == 0);
+  Timer frame_timer(
+      &loop,
+      [](Timer *t) {
+        static size_t frameno = 0;
+        if (frameno >= Log().size()) {
+          t->GetLoop()->Stop();
+          return;
+        }
 
-  return uv_run(loop, UV_RUN_DEFAULT);
+        printf("Frame #%lu\n", frameno);
+
+        auto cube = Log()[frameno][FLAGS_cubes_count - 1];
+        printf("  Cube [(%f, %f %f), (%f, %f %f, %f), %s]\n", cube.position[0],
+               cube.position[1], cube.position[2], cube.orientation[0],
+               cube.orientation[1], cube.orientation[2], cube.orientation[3],
+               (cube.interacting) ? "true" : "false");
+
+        frameno++;
+      },
+      16);
+
+  return loop.Run();
 }
