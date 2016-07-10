@@ -83,24 +83,20 @@ private:
 class Timer {
 public:
   Timer(Loop *loop, std::function<void(Timer *)> callback, uint64_t repeat)
-      : loop_(loop), callback_(std::move(callback)), repeat_(repeat) {
+      : callback_(std::move(callback)) {
     timer_.data = this;
     CHECK(uv_timer_init(&loop->loop_, &timer_) == 0);
-    CHECK(uv_timer_start(&timer_, Timer::Wrapper, 1, repeat_) == 0);
+    CHECK(uv_timer_start(&timer_, Timer::Wrapper, 1, repeat) == 0);
   }
   ~Timer() { uv_timer_stop(&timer_); }
-
-  Loop *GetLoop() { return loop_; }
 
 private:
   static void Wrapper(uv_timer_t *handle) {
     ((Timer *)handle->data)->callback_((Timer *)handle->data);
   }
+  std::function<void(Timer *)> callback_;
 
   uv_timer_t timer_;
-  std::function<void(Timer *)> callback_;
-  uint64_t repeat_;
-  Loop *loop_;
 };
 
 int main(int argc, char *argv[]) {
@@ -113,10 +109,10 @@ int main(int argc, char *argv[]) {
   Loop loop;
   Timer frame_timer(
       &loop,
-      [](Timer *t) {
+      [&](Timer *t) {
         static size_t frameno = 0;
         if (frameno >= Log().size()) {
-          t->GetLoop()->Stop();
+          loop.Stop();
           return;
         }
 
