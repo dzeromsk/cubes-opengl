@@ -117,11 +117,11 @@ public:
   ~Window() { glfwTerminate(); }
 
   void OnResize(std::function<void(int, int)> resize_callback) {
-    resize_callback_ = resize_callback;
+    resize_callback_ = std::move(resize_callback);
   }
 
   void OnKey(std::function<void(int, int)> key_callback) {
-    key_callback_ = key_callback;
+    key_callback_ = std::move(key_callback);
   }
 
   void Swap() { glfwSwapBuffers(window_); }
@@ -157,6 +157,9 @@ private:
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_MULTISAMPLE);
+
+    resize_callback_ = [](int a, int b) { printf("Not implemented!\n"); };
+    key_callback_ = [](int a, int b) { printf("Not implemented!\n"); };
 
     glfwSetWindowSizeCallback(window_, Window::ResizeWrapper);
     glfwSetKeyCallback(window_, Window::KeyWrapper);
@@ -194,6 +197,38 @@ const char *kVertexSource = GLSL(
 
   uniform mat4 view;
   uniform mat4 projection;
+
+  void mat3_from_quat(out mat3 m, in vec4 q) {
+    float qxx = q.x * q.x;
+    float qyy = q.y * q.y;
+    float qzz = q.z * q.z;
+    float qxz = q.x * q.z;
+    float qxy = q.x * q.y;
+    float qyz = q.y * q.z;
+    float qwx = q.w * q.x;
+    float qwy = q.w * q.y;
+    float qwz = q.w * q.z;
+
+    m = mat3(1);
+
+    m[0][0] = 1 - 2 * (qyy + qzz);
+    m[0][1] = 2 * (qxy + qwz);
+    m[0][2] = 2 * (qxz - qwy);
+
+    m[1][0] = 2 * (qxy - qwz);
+    m[1][1] = 1 - 2 * (qxx + qzz);
+    m[1][2] = 2 * (qyz + qwx);
+
+    m[2][0] = 2 * (qxz + qwy);
+    m[2][1] = 2 * (qyz - qwx);
+    m[2][2] = 1 - 2 * (qxx + qyy);
+  }
+
+  void mat4_from_quat(out mat4 m, in vec4 q) {
+    mat3 n;
+    mat3_from_quat(n, q);
+    m = mat4(n);
+  }
 
   void main() {
     gl_Position = projection * view * model * vec4(position, 1.0f);
@@ -452,6 +487,100 @@ struct Model {
 
 } // namespace render
 
+class Client {
+public:
+  Client(Loop &loop, Window &window, render::Model &model)
+      : loop_(loop), window_(window), model_(model) {
+    projection_ = glm::perspective(
+        45.0f, (GLfloat)FLAGS_width / (GLfloat)FLAGS_height, 1.0f, 100.0f);
+    view_ = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
+                        glm::vec3(0.0f, 1.0f, 0.0f));
+  }
+
+  int Run() {
+    window_.OnResize([](int w, int h) { glViewport(0, 0, w, h); });
+    window_.OnKey([&](int key, int action) {
+      if (action == GLFW_PRESS) {
+        OnKey(key);
+      }
+    });
+
+    Timer input(&loop_, [&](Timer *t) { window_.Poll(); }, 32);
+    Timer render(&loop_, [&](Timer *t) { OnFrame(); }, 16);
+
+    return loop_.Run();
+  }
+
+  void OnKey(int key) {
+    switch (key) {
+    case GLFW_KEY_ESCAPE:
+    case GLFW_KEY_Q:
+      loop_.Stop();
+      break;
+    case GLFW_KEY_1:
+      view_ = glm::lookAt(glm::vec3(0.f, 15.f, 25.f), glm::vec3(0, 0, 0),
+                          glm::vec3(0.0f, 1.0f, 0.0f));
+      break;
+    case GLFW_KEY_2:
+      view_ = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
+                          glm::vec3(0.0f, 1.0f, 0.0f));
+      break;
+    default:
+      break;
+    }
+  }
+
+  void OnFrame() {
+    Frame *frame = Next();
+    if (frame == nullptr) {
+      return;
+    }
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glViewport(0, 0, FLAGS_width, FLAGS_height);
+    glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_MULTISAMPLE);
+    glBlendFunc(GL_ONE, GL_SRC_ALPHA);
+    glDisable(GL_BLEND);
+    // printf("Frame #%lu\n", frameno);
+
+    std::vector<glm::mat4> models;
+    for (const auto &cube : *frame) {
+      // TODO(dzeromsk): compute model matrix and set color in
+      // shader
+      glm::quat rot(cube.orientation[3], cube.orientation[0],
+                    cube.orientation[1], cube.orientation[2]);
+
+      glm::mat4 translate = glm::translate(glm::mat4(1.0), cube.position);
+      glm::mat4 rotate = glm::mat4_cast(rot);
+
+      models.push_back(translate * rotate);
+    }
+
+    model_.Draw(models, view_, projection_);
+
+    window_.Swap();
+  }
+
+  Frame *Next() {
+    static size_t n = 0;
+    if (n >= Log().size()) {
+      loop_.Stop();
+      return nullptr;
+    }
+    n++;
+    return &Log()[n];
+  }
+
+private:
+  Loop &loop_;
+  render::Model &model_;
+  Window &window_;
+  glm::mat4 view_;
+  glm::mat4 projection_;
+};
+
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
@@ -459,77 +588,11 @@ int main(int argc, char *argv[]) {
   ReadLog(FLAGS_logfile);
   CHECK(Log().size() > 0);
 
-  Loop loop;
-
-  glm::vec3 camera_up = glm::vec3(0.0f, 1.0f, 0.0f);
-  glm::mat4 projection = glm::perspective(
-      45.0f, (GLfloat)FLAGS_width / (GLfloat)FLAGS_height, 1.0f, 100.0f);
-
-  glm::mat4 view =
-      glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0), camera_up);
-
   Window &window = Window::Default();
-  window.OnResize([](int w, int h) { glViewport(0, 0, w, h); });
-  window.OnKey([&](int key, int action) {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-      loop.Stop();
-    }
 
-    if (key == GLFW_KEY_Q && action == GLFW_PRESS) {
-      loop.Stop();
-    }
-
-    if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
-      view = glm::lookAt(glm::vec3(0.f, 15.f, 25.f), glm::vec3(0, 0, 0),
-                         camera_up);
-    }
-
-    if (key == GLFW_KEY_2 && action == GLFW_PRESS) {
-      view = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
-                         camera_up);
-    }
-  });
-
+  Loop loop;
   render::Model model;
+  Client client(loop, window, model);
 
-  Timer input(&loop, [&](Timer *t) { window.Poll(); }, 32);
-  Timer render(&loop,
-               [&](Timer *t) {
-                 static size_t frameno = 0;
-                 if (frameno >= Log().size()) {
-                   loop.Stop();
-                   return;
-                 }
-
-                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                 glViewport(0, 0, FLAGS_width, FLAGS_height);
-                 glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
-                 glEnable(GL_DEPTH_TEST);
-                 glEnable(GL_MULTISAMPLE);
-                 glBlendFunc(GL_ONE, GL_SRC_ALPHA);
-                 glDisable(GL_BLEND);
-                 printf("Frame #%lu\n", frameno);
-
-                 std::vector<glm::mat4> models;
-                 for (const auto &cube : Log()[frameno]) {
-                   // TODO(dzeromsk): compute model matrix and set color in
-                   // shader
-                   glm::quat rot(cube.orientation[3], cube.orientation[0],
-                                 cube.orientation[1], cube.orientation[2]);
-
-                   glm::mat4 translate =
-                       glm::translate(glm::mat4(1.0), cube.position);
-                   glm::mat4 rotate = glm::mat4_cast(rot);
-
-                   models.push_back(translate * rotate);
-                 }
-
-                 model.Draw(models, view, projection);
-
-                 frameno++;
-                 window.Swap();
-               },
-               16);
-
-  return loop.Run();
+  return client.Run();
 }
