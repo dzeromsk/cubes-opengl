@@ -144,7 +144,7 @@ private:
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
     glfwWindowHint(GLFW_SAMPLES, 4);
-    glfwSwapInterval(1);
+    // glfwSwapInterval(1);
 
     CHECK(window_ = glfwCreateWindow(width_, height_, title, nullptr, nullptr))
         << "Failed to Create OpenGL Context";
@@ -512,6 +512,8 @@ int main(int argc, char *argv[]) {
 
                  std::vector<glm::mat4> models;
                  for (const auto &cube : Log()[frameno]) {
+                   // TODO(dzeromsk): compute model matrix and set color in
+                   // shader
                    glm::quat rot(cube.orientation[3], cube.orientation[0],
                                  cube.orientation[1], cube.orientation[2]);
 
