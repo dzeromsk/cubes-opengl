@@ -104,9 +104,8 @@ public:
     CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
   }
 
-  typedef std::function<void(uv_handle_t *)> CloseFunc;
-  typedef std::function<void(uv_udp_t *, size_t, const uv_buf_t *,
-                             const struct sockaddr *, unsigned)>
+  typedef std::function<void()> CloseFunc;
+  typedef std::function<void(uv_buf_t, const struct sockaddr *, unsigned)>
       ReceiveFunc;
 
   void OnReceive(ReceiveFunc on_receive) { receive_ = std::move(on_receive); }
@@ -119,14 +118,15 @@ public:
 
 private:
   static void CloseWrapper(uv_handle_t *handle) {
-    ((UDP *)handle->data)->close_(handle);
+    ((UDP *)handle->data)->close_();
   }
 
   static void ReceiveWrapper(uv_udp_t *handle, ssize_t nread,
                              const uv_buf_t *buf, const struct sockaddr *addr,
                              unsigned flags) {
     if (nread > 0 && addr != nullptr) {
-      ((UDP *)handle->data)->receive_(handle, size_t(nread), buf, addr, flags);
+      uv_buf_t data = {buf->base, size_t(nread)};
+      ((UDP *)handle->data)->receive_(data, addr, flags);
     }
   }
 
@@ -177,13 +177,12 @@ struct Client {
 
 class UDPServer {
 public:
-  typedef std::function<void(const uv_buf_t *, size_t, const struct sockaddr *)>
+  typedef std::function<void(const uv_buf_t, const struct sockaddr *)>
       ReceiveFunc;
   UDPServer(ReceiveFunc on_receive)
       : socket_(loop_), on_receive_(std::move(on_receive)) {
-    socket_.OnReceive([&](uv_udp_t *handle, size_t nread, const uv_buf_t *buf,
-                          const struct sockaddr *addr,
-                          unsigned flags) { on_receive_(buf, nread, addr); });
+    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
+                          unsigned flags) { on_receive_(buf, addr); });
   }
 
   int ListenAndServe(const char *ip, int port) {
@@ -221,17 +220,16 @@ int main(int argc, char *argv[]) {
 
   std::set<Client> clients;
 
-  UDPServer server(
-      [&](const uv_buf_t *request, size_t len, const struct sockaddr *addr) {
-        clients.emplace(addr);
+  UDPServer server([&](uv_buf_t request, const struct sockaddr *addr) {
+    clients.emplace(addr);
 
-        uv_buf_t response = {request->base, len};
-        for (const auto &client : clients) {
-          if (client != addr || clients.size() == 1) {
-            server.Send(client, &response);
-          }
-        }
-      });
+    uv_buf_t response = request;
+    for (const auto &client : clients) {
+      if (client != addr) {
+        server.Send(client, &response);
+      }
+    }
+  });
 
   return server.ListenAndServe("127.0.0.1", 3389);
 }
