@@ -146,28 +146,24 @@ private:
   uv_udp_t socket_;
 };
 
-struct Client {
+struct Addr {
   uint32_t ip;
   uint16_t port;
 
-  Client(const struct sockaddr *addr) {
+  Addr(const struct sockaddr *addr) {
     ip = ((struct sockaddr_in *)addr)->sin_addr.s_addr;
     port = ntohs(((struct sockaddr_in *)addr)->sin_port);
   }
 
-  bool operator<(const Client &rhs) const {
+  bool operator<(const Addr &rhs) const {
     return ip < rhs.ip || (!(rhs.ip < ip) && port < rhs.port);
   }
 
-  bool operator==(const Client &rhs) const {
-    return ip == rhs.ip && port == rhs.port;
-  }
-
-  bool operator!=(const Client &rhs) const {
+  bool operator!=(const Addr &rhs) const {
     return ip != rhs.ip || port != rhs.port;
   }
 
-  void Addr(struct sockaddr_in *addr) const {
+  void Sock(struct sockaddr_in *addr) const {
     memset(addr, 0, sizeof(*addr));
     addr->sin_family = AF_INET;
     addr->sin_port = htons(port);
@@ -177,8 +173,7 @@ struct Client {
 
 class UDPServer {
 public:
-  typedef std::function<void(const uv_buf_t, const struct sockaddr *)>
-      ReceiveFunc;
+  typedef std::function<void(const uv_buf_t, const Addr)> ReceiveFunc;
   UDPServer(ReceiveFunc on_receive)
       : socket_(loop_), on_receive_(std::move(on_receive)) {
     socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
@@ -194,9 +189,9 @@ public:
     socket_.Send(buf, 1, addr);
   }
 
-  int Send(const Client &client, const uv_buf_t *buf) {
+  int Send(const Addr &client, const uv_buf_t *buf) {
     struct sockaddr_in addr;
-    client.Addr(&addr);
+    client.Sock(&addr);
     socket_.Send(buf, 1, (struct sockaddr *)&addr);
   }
 
@@ -218,9 +213,9 @@ int main(int argc, char *argv[]) {
   ReadLog(FLAGS_logfile);
   CHECK(Log().size() > 0);
 
-  std::set<Client> clients;
+  std::set<Addr> clients;
 
-  UDPServer server([&](uv_buf_t request, const struct sockaddr *addr) {
+  UDPServer server([&](uv_buf_t request, const Addr addr) {
     clients.emplace(addr);
 
     uv_buf_t response = request;
