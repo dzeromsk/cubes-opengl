@@ -77,6 +77,7 @@ static void ReadLog(std::string filename) {
 
 class Loop {
   friend class Timer;
+  friend class UDP;
 
 public:
   Loop() { CHECK(uv_loop_init(&loop_) == 0); }
@@ -106,6 +107,76 @@ private:
   std::function<void(Timer *)> callback_;
 
   uv_timer_t timer_;
+};
+
+typedef struct {
+  uv_udp_send_t req;
+  char *data;
+} udp_send_ctx_t;
+
+#define container_of(ptr, type, member)                                        \
+  ((type *)((char *)(ptr)-offsetof(type, member)))
+
+class UDP {
+public:
+  UDP(Loop &loop) {
+    CHECK(uv_udp_init(&loop.loop_, &socket_) == 0);
+    socket_.data = this;
+  }
+
+  ~UDP() { uv_udp_recv_stop(&socket_); }
+
+  void Listen(const char *ip, int port) {
+    struct sockaddr_in addr;
+    CHECK(uv_ip4_addr(ip, port, &addr) == 0);
+    CHECK(uv_udp_bind(&socket_, (const struct sockaddr *)&addr, 0) == 0);
+    CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
+  }
+
+  void Listen() {
+    CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
+  }
+
+  typedef std::function<void()> CloseFunc;
+  typedef std::function<void(uv_buf_t, const struct sockaddr *, unsigned)>
+      ReceiveFunc;
+
+  void OnReceive(ReceiveFunc on_receive) { receive_ = std::move(on_receive); }
+
+  int Send(const uv_buf_t bufs[], unsigned int nbufs,
+           const struct sockaddr *addr) {
+    udp_send_ctx_t *req = (udp_send_ctx_t *)malloc(sizeof(*req));
+    uv_udp_send(&(req->req), &socket_, bufs, nbufs, addr, UDP::Send);
+  }
+
+private:
+  static void CloseWrapper(uv_handle_t *handle) {
+    ((UDP *)handle->data)->close_();
+  }
+
+  static void ReceiveWrapper(uv_udp_t *handle, ssize_t nread,
+                             const uv_buf_t *buf, const struct sockaddr *addr,
+                             unsigned flags) {
+    if (nread > 0 && addr != nullptr) {
+      uv_buf_t data = {buf->base, size_t(nread)};
+      ((UDP *)handle->data)->receive_(data, addr, flags);
+    }
+  }
+
+  static void Alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
+    static char slab[65536];
+    *buf = uv_buf_init(slab, sizeof(slab));
+  }
+
+  static void Send(uv_udp_send_t *req, int status) {
+    udp_send_ctx_t *ctx = container_of(req, udp_send_ctx_t, req);
+    free(ctx);
+  }
+
+  CloseFunc close_;
+  ReceiveFunc receive_;
+
+  uv_udp_t socket_;
 };
 
 class Window {
@@ -490,15 +561,19 @@ struct Model {
 class Client {
 public:
   Client(Loop &loop, Window &window, render::Model &model)
-      : loop_(loop), window_(window), model_(model) {
-    projection_ = glm::perspective(
-        45.0f, (GLfloat)FLAGS_width / (GLfloat)FLAGS_height, 1.0f, 100.0f);
+      : loop_(loop), window_(window), model_(model), socket_(loop),
+        width_(FLAGS_width), height_(FLAGS_height) {
     view_ = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
                         glm::vec3(0.0f, 1.0f, 0.0f));
   }
 
   int Run() {
-    window_.OnResize([](int w, int h) { glViewport(0, 0, w, h); });
+    window_.OnResize([&](int w, int h) {
+      glViewport(0, 0, w, h);
+      width_ = w;
+      height_ = h;
+    });
+
     window_.OnKey([&](int key, int action) {
       if (action == GLFW_PRESS) {
         OnKey(key);
@@ -508,6 +583,17 @@ public:
     // TODO(dzeromsk): Send input to server at 30fps
     Timer input(&loop_, [&](Timer *t) { window_.Poll(); }, 32);
     Timer render(&loop_, [&](Timer *t) { OnFrame(); }, 16);
+
+    // setup netowking
+    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
+                          unsigned flags) { OnReceive(buf, addr); });
+    socket_.Listen();
+
+    struct sockaddr_in server_addr;
+    CHECK(uv_ip4_addr("127.0.0.1", 3389, &server_addr) == 0);
+
+    uv_buf_t buf = {(char *)"HELO", 4};
+    socket_.Send(&buf, 1, (const sockaddr *)&server_addr);
 
     return loop_.Run();
   }
@@ -532,13 +618,12 @@ public:
   }
 
   void OnFrame() {
-    Frame *frame = Next();
-    if (frame == nullptr) {
-      return;
-    }
+    Frame &frame = Next();
+
+    glm::mat4 projection = glm::perspective(
+        45.0f, (GLfloat)width_ / (GLfloat)height_, 1.0f, 100.0f);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glViewport(0, 0, FLAGS_width, FLAGS_height);
     glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_MULTISAMPLE);
@@ -546,7 +631,7 @@ public:
     glDisable(GL_BLEND);
 
     std::vector<glm::mat4> models;
-    for (const auto &cube : *frame) {
+    for (const auto &cube : frame) {
       // TODO(dzeromsk): compute model matrix and set color in
       // shader
       glm::quat rot(cube.orientation[3], cube.orientation[0],
@@ -558,27 +643,28 @@ public:
       models.push_back(translate * rotate);
     }
 
-    model_.Draw(models, view_, projection_);
+    model_.Draw(models, view_, projection);
 
     window_.Swap();
   }
 
-  Frame *Next() {
-    static size_t n = 0;
-    if (n >= Log().size()) {
-      loop_.Stop();
-      return nullptr;
-    }
-    n++;
-    return &Log()[n];
+  Frame &Next() { return frame_; }
+
+  void OnReceive(uv_buf_t request, const struct sockaddr *addr) {
+    frame_.assign((State *)request.base, (State *)(request.base + request.len));
   }
 
 private:
+  Frame frame_;
+  int width_;
+  int height_;
+
   Loop &loop_;
   render::Model &model_;
   Window &window_;
+  UDP socket_;
+
   glm::mat4 view_;
-  glm::mat4 projection_;
 };
 
 int main(int argc, char *argv[]) {

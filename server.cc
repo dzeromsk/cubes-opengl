@@ -235,15 +235,24 @@ public:
     socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
                           unsigned flags) { OnReceive(buf, addr); });
 
-    timer_.Start([&] { OnTick(); }, 1000);
+    timer_.Start([&] { OnTick(); }, 16);
   }
 
 private:
   void OnTick() {
-    uv_buf_t response = {(char *)"TICK!\n", 6};
+    Frame &frame = Next();
+    uv_buf_t response = {(char *)frame.data(), frame.size() * sizeof(State)};
     for (const auto &client : clients_) {
       Send(client, &response);
     }
+  }
+
+  Frame &Next() {
+    static size_t n = 0;
+    if (n >= Log().size()) {
+      n = 0;
+    }
+    return Log()[n++];
   }
 
   void OnReceive(uv_buf_t request, Addr addr) {
@@ -269,6 +278,5 @@ int main(int argc, char *argv[]) {
   CHECK(Log().size() > 0);
 
   GameServer server;
-
   return server.ListenAndServe("127.0.0.1", 3389);
 }
