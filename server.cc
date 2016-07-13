@@ -24,6 +24,7 @@
 #include <uv.h>
 
 #include <functional>
+#include <set>
 
 #pragma pack(push, 1)
 struct State {
@@ -106,7 +107,7 @@ public:
 
   typedef std::function<void(uv_handle_t *, size_t, uv_buf_t *)> AllocFunc;
   typedef std::function<void(uv_handle_t *)> CloseFunc;
-  typedef std::function<void(uv_udp_t *, ssize_t, const uv_buf_t *,
+  typedef std::function<void(uv_udp_t *, size_t, const uv_buf_t *,
                              const struct sockaddr *, unsigned)>
       ReceiveFunc;
   typedef std::function<void(uv_udp_send_t *, int)> SendFunc;
@@ -135,7 +136,7 @@ private:
                              const uv_buf_t *buf, const struct sockaddr *addr,
                              unsigned flags) {
     if (nread > 0 && addr != nullptr) {
-      ((UDP *)handle->data)->receive_(handle, nread, buf, addr, flags);
+      ((UDP *)handle->data)->receive_(handle, size_t(nread), buf, addr, flags);
     }
   }
 
@@ -152,10 +153,38 @@ private:
   uv_udp_t socket_;
 };
 
+struct Client {
+  uint32_t ip;
+  uint16_t port;
+
+  Client(const struct sockaddr *addr) {
+    ip = ((struct sockaddr_in *)addr)->sin_addr.s_addr;
+    port = ntohs(((struct sockaddr_in *)addr)->sin_port);
+  }
+
+  bool operator<(const Client &rhs) const {
+    return ip < rhs.ip || (!(rhs.ip < ip) && port < rhs.port);
+  }
+
+  bool operator==(const Client &rhs) const {
+    return ip == rhs.ip && port == rhs.port;
+  }
+
+  bool operator!=(const Client &rhs) const {
+    return ip != rhs.ip || port != rhs.port;
+  }
+
+  void Addr(struct sockaddr_in *addr) const {
+    memset(addr, 0, sizeof(*addr));
+    addr->sin_family = AF_INET;
+    addr->sin_port = htons(port);
+    addr->sin_addr.s_addr = ip;
+  }
+};
+
 class UDPServer {
 public:
-  typedef std::function<void(const uv_buf_t *, ssize_t,
-                             const struct sockaddr *)>
+  typedef std::function<void(const uv_buf_t *, size_t, const struct sockaddr *)>
       ReceiveFunc;
   UDPServer(ReceiveFunc on_receive)
       : socket_(loop_), on_receive_(std::move(on_receive)) {
@@ -166,7 +195,7 @@ public:
           *buf = OnAlloc(suggested_size);
         });
 
-    socket_.OnReceive([&](uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
+    socket_.OnReceive([&](uv_udp_t *handle, size_t nread, const uv_buf_t *buf,
                           const struct sockaddr *addr,
                           unsigned flags) { on_receive_(buf, nread, addr); });
   }
@@ -178,6 +207,12 @@ public:
 
   int Send(const struct sockaddr *addr, const uv_buf_t *buf) {
     socket_.Send(buf, 1, addr);
+  }
+
+  int Send(const Client &client, const uv_buf_t *buf) {
+    struct sockaddr_in addr;
+    client.Addr(&addr);
+    socket_.Send(buf, 1, (struct sockaddr *)&addr);
   }
 
 private:
@@ -198,13 +233,18 @@ int main(int argc, char *argv[]) {
   ReadLog(FLAGS_logfile);
   CHECK(Log().size() > 0);
 
-  UDPServer server(
-      [&](const uv_buf_t *buf, ssize_t x, const struct sockaddr *addr) {
-        printf("Got message! (%ld, %p)\n", x, addr);
-        printf("- %s", buf->base);
-        uv_buf_t response = uv_buf_init((char *)"PONG!\n", 6);
+  std::set<Client> clients;
 
-        server.Send(addr, &response);
+  UDPServer server(
+      [&](const uv_buf_t *request, size_t len, const struct sockaddr *addr) {
+        clients.emplace(addr);
+
+        uv_buf_t response = {request->base, len};
+        for (const auto &client : clients) {
+          if (client != addr || clients.size() == 1) {
+            server.Send(client, &response);
+          }
+        }
       });
 
   return server.ListenAndServe("127.0.0.1", 3389);
