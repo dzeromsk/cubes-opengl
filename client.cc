@@ -591,9 +591,9 @@ int main(int argc, char *argv[]) {
   CHECK(Log().size() > 0);
 
   Window &window = Window::Default();
+  render::Model model;
 
   Loop loop;
-  render::Model model;
   Client client(loop, window, model);
 
   return client.Run();

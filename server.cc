@@ -71,6 +71,7 @@ static void ReadLog(std::string filename) {
 
 class Loop {
   friend class UDP;
+  friend class Timer;
 
 public:
   Loop() { CHECK(uv_loop_init(&loop_) == 0); }
@@ -173,6 +174,7 @@ struct Addr {
 
 class UDPServer {
 public:
+  UDPServer() : socket_(loop_) {}
   typedef std::function<void(const uv_buf_t, const Addr)> ReceiveFunc;
   UDPServer(ReceiveFunc on_receive)
       : socket_(loop_), on_receive_(std::move(on_receive)) {
@@ -185,25 +187,78 @@ public:
     return loop_.Run();
   }
 
-  int Send(const struct sockaddr *addr, const uv_buf_t *buf) {
-    socket_.Send(buf, 1, addr);
-  }
-
   int Send(const Addr &client, const uv_buf_t *buf) {
     struct sockaddr_in addr;
     client.Sock(&addr);
     socket_.Send(buf, 1, (struct sockaddr *)&addr);
   }
 
-private:
-  uv_buf_t OnAlloc(size_t suggested_size) {
-    static char slab[65536];
-    return uv_buf_init(slab, sizeof(slab));
-  }
-
+protected:
   Loop loop_;
   UDP socket_;
   ReceiveFunc on_receive_;
+};
+
+class Timer {
+public:
+  Timer(Loop &loop) {
+    timer_.data = this;
+    CHECK(uv_timer_init(&loop.loop_, &timer_) == 0);
+  }
+
+  Timer(Loop *loop, std::function<void(void)> callback, uint64_t repeat)
+      : callback_(std::move(callback)) {
+    timer_.data = this;
+    CHECK(uv_timer_init(&loop->loop_, &timer_) == 0);
+    CHECK(uv_timer_start(&timer_, Timer::Wrapper, 1, repeat) == 0);
+  }
+
+  ~Timer() { uv_timer_stop(&timer_); }
+
+  void Start(std::function<void(void)> callback, uint64_t repeat) {
+    callback_ = std::move(callback);
+    CHECK(uv_timer_start(&timer_, Timer::Wrapper, 1, repeat) == 0);
+  }
+
+private:
+  static void Wrapper(uv_timer_t *handle) {
+    ((Timer *)handle->data)->callback_();
+  }
+  std::function<void(void)> callback_;
+
+  uv_timer_t timer_;
+};
+
+class GameServer : public UDPServer {
+public:
+  GameServer() : timer_(loop_) {
+    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
+                          unsigned flags) { OnReceive(buf, addr); });
+
+    timer_.Start([&] { OnTick(); }, 1000);
+  }
+
+private:
+  void OnTick() {
+    uv_buf_t response = {(char *)"TICK!\n", 6};
+    for (const auto &client : clients_) {
+      Send(client, &response);
+    }
+  }
+
+  void OnReceive(uv_buf_t request, Addr addr) {
+    clients_.emplace(addr);
+
+    uv_buf_t response = request;
+    for (const auto &client : clients_) {
+      if (client != addr) {
+        Send(client, &response);
+      }
+    }
+  }
+
+  Timer timer_;
+  std::set<Addr> clients_;
 };
 
 int main(int argc, char *argv[]) {
@@ -213,18 +268,7 @@ int main(int argc, char *argv[]) {
   ReadLog(FLAGS_logfile);
   CHECK(Log().size() > 0);
 
-  std::set<Addr> clients;
-
-  UDPServer server([&](uv_buf_t request, const Addr addr) {
-    clients.emplace(addr);
-
-    uv_buf_t response = request;
-    for (const auto &client : clients) {
-      if (client != addr) {
-        server.Send(client, &response);
-      }
-    }
-  });
+  GameServer server;
 
   return server.ListenAndServe("127.0.0.1", 3389);
 }
