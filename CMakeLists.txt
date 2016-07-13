@@ -149,3 +149,29 @@ if (UNIX)
   target_compile_options (client PUBLIC -g -Wextra -std=c++14)
   target_link_libraries (client dl)
 endif (UNIX)
+
+add_executable (server
+  server.cc
+)
+
+target_include_directories (server PUBLIC
+  third_party/libuv/libuv/include/
+  third_party/gflags/include/
+  third_party/glog/
+  third_party/glm/
+)
+
+target_link_libraries (server
+  uv
+  glog
+  gflags
+)
+
+if (WIN32)
+  target_compile_options (server PUBLIC /W4 /fp:strict)
+  target_link_libraries (server ws2_32 iphlpapi psapi userenv)
+endif (WIN32)
+
+if (UNIX)
+  target_compile_options (server PUBLIC -g -Wextra -std=c++14)
+endif (UNIX)

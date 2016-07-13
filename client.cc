@@ -56,7 +56,7 @@ static Frames &Log() {
 
 static void ReadLog(std::string filename) {
   FILE *f = nullptr;
-  CHECK(f = fopen(filename.c_str(), "r"));
+  CHECK(f = fopen(filename.c_str(), "rb"));
   Log().clear();
   for (int frame = 1; frame; frame++) {
     std::vector<State> cubes;
@@ -198,36 +198,36 @@ const char *kVertexSource = GLSL(
   uniform mat4 view;
   uniform mat4 projection;
 
-  void mat3_from_quat(out mat3 m, in vec4 q) {
-    float qxx = q.x * q.x;
-    float qyy = q.y * q.y;
-    float qzz = q.z * q.z;
-    float qxz = q.x * q.z;
-    float qxy = q.x * q.y;
-    float qyz = q.y * q.z;
-    float qwx = q.w * q.x;
-    float qwy = q.w * q.y;
-    float qwz = q.w * q.z;
-
-    m = mat3(1);
-
-    m[0][0] = 1 - 2 * (qyy + qzz);
-    m[0][1] = 2 * (qxy + qwz);
-    m[0][2] = 2 * (qxz - qwy);
-
-    m[1][0] = 2 * (qxy - qwz);
-    m[1][1] = 1 - 2 * (qxx + qzz);
-    m[1][2] = 2 * (qyz + qwx);
-
-    m[2][0] = 2 * (qxz + qwy);
-    m[2][1] = 2 * (qyz - qwx);
-    m[2][2] = 1 - 2 * (qxx + qyy);
-  }
-
   void mat4_from_quat(out mat4 m, in vec4 q) {
-    mat3 n;
-    mat3_from_quat(n, q);
-    m = mat4(n);
+    float xx = q.x * q.x;
+    float yy = q.y * q.y;
+    float zz = q.z * q.z;
+    float xz = q.x * q.z;
+    float xy = q.x * q.y;
+    float yz = q.y * q.z;
+    float wx = q.w * q.x;
+    float wy = q.w * q.y;
+    float wz = q.w * q.z;
+
+    m[0][0] = 1 - 2 * (yy + zz);
+    m[0][1] = 2 * (xy + wz);
+    m[0][2] = 2 * (xz - wy);
+    m[0][3] = 0;
+
+    m[1][0] = 2 * (xy - wz);
+    m[1][1] = 1 - 2 * (xx + zz);
+    m[1][2] = 2 * (yz + wx);
+    m[1][3] = 0;
+
+    m[2][0] = 2 * (xz + wy);
+    m[2][1] = 2 * (yz - wx);
+    m[2][2] = 1 - 2 * (xx + yy);
+    m[2][3] = 0;
+
+    m[3][3] = 0;
+    m[3][3] = 0;
+    m[3][3] = 0;
+    m[3][3] = 1;
   }
 
   void main() {
@@ -505,6 +505,7 @@ public:
       }
     });
 
+    // TODO(dzeromsk): Send input to server at 30fps
     Timer input(&loop_, [&](Timer *t) { window_.Poll(); }, 32);
     Timer render(&loop_, [&](Timer *t) { OnFrame(); }, 16);
 
@@ -543,7 +544,6 @@ public:
     glEnable(GL_MULTISAMPLE);
     glBlendFunc(GL_ONE, GL_SRC_ALPHA);
     glDisable(GL_BLEND);
-    // printf("Frame #%lu\n", frameno);
 
     std::vector<glm::mat4> models;
     for (const auto &cube : *frame) {
@@ -585,6 +585,8 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
+  // TODO(dzeromsk): Replace log with udp packets from server. Server will send
+  // state in loop. Then add interpolation and reduce state dumps to 10pps.
   ReadLog(FLAGS_logfile);
   CHECK(Log().size() > 0);
 
