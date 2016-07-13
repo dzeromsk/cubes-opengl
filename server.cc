@@ -101,33 +101,23 @@ public:
     struct sockaddr_in addr;
     CHECK(uv_ip4_addr(ip, port, &addr) == 0);
     CHECK(uv_udp_bind(&socket_, (const struct sockaddr *)&addr, 0) == 0);
-    CHECK(uv_udp_recv_start(&socket_, UDP::AllocWrapper, UDP::ReceiveWrapper) ==
-          0);
+    CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
   }
 
-  typedef std::function<void(uv_handle_t *, size_t, uv_buf_t *)> AllocFunc;
   typedef std::function<void(uv_handle_t *)> CloseFunc;
   typedef std::function<void(uv_udp_t *, size_t, const uv_buf_t *,
                              const struct sockaddr *, unsigned)>
       ReceiveFunc;
-  typedef std::function<void(uv_udp_send_t *, int)> SendFunc;
-
-  void OnAlloc(AllocFunc on_alloc) { alloc_ = std::move(on_alloc); }
 
   void OnReceive(ReceiveFunc on_receive) { receive_ = std::move(on_receive); }
 
   int Send(const uv_buf_t bufs[], unsigned int nbufs,
            const struct sockaddr *addr) {
     udp_send_ctx_t *req = (udp_send_ctx_t *)malloc(sizeof(*req));
-    uv_udp_send(&(req->req), &socket_, bufs, nbufs, addr, UDP::SendWrapper);
+    uv_udp_send(&(req->req), &socket_, bufs, nbufs, addr, UDP::Send);
   }
 
 private:
-  static void AllocWrapper(uv_handle_t *handle, size_t suggested_size,
-                           uv_buf_t *buf) {
-    ((UDP *)handle->data)->alloc_(handle, suggested_size, buf);
-  }
-
   static void CloseWrapper(uv_handle_t *handle) {
     ((UDP *)handle->data)->close_(handle);
   }
@@ -140,15 +130,18 @@ private:
     }
   }
 
-  static void SendWrapper(uv_udp_send_t *req, int status) {
+  static void Alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
+    static char slab[65536];
+    *buf = uv_buf_init(slab, sizeof(slab));
+  }
+
+  static void Send(uv_udp_send_t *req, int status) {
     udp_send_ctx_t *ctx = container_of(req, udp_send_ctx_t, req);
     free(ctx);
   }
 
-  AllocFunc alloc_;
   CloseFunc close_;
   ReceiveFunc receive_;
-  SendFunc send_;
 
   uv_udp_t socket_;
 };
@@ -188,13 +181,6 @@ public:
       ReceiveFunc;
   UDPServer(ReceiveFunc on_receive)
       : socket_(loop_), on_receive_(std::move(on_receive)) {
-    socket_.OnAlloc(
-        [&](uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-          CHECK(handle);
-          CHECK(suggested_size <= 65536);
-          *buf = OnAlloc(suggested_size);
-        });
-
     socket_.OnReceive([&](uv_udp_t *handle, size_t nread, const uv_buf_t *buf,
                           const struct sockaddr *addr,
                           unsigned flags) { on_receive_(buf, nread, addr); });
