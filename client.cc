@@ -567,7 +567,9 @@ public:
                         glm::vec3(0.0f, 1.0f, 0.0f));
   }
 
-  int Run() {
+  int ConnectAndRun(const char* server_ip, int port) {
+    Connect(server_ip, port);
+
     window_.OnResize([&](int w, int h) {
       glViewport(0, 0, w, h);
       width_ = w;
@@ -584,18 +586,19 @@ public:
     Timer input(&loop_, [&](Timer *t) { window_.Poll(); }, 32);
     Timer render(&loop_, [&](Timer *t) { OnFrame(); }, 16);
 
-    // setup netowking
+    return loop_.Run();
+  }
+
+  void Connect(const char *ip, int port) {
+    struct sockaddr_in server_addr;
+    CHECK(uv_ip4_addr(ip, port, &server_addr) == 0);
+
     socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
                           unsigned flags) { OnReceive(buf, addr); });
     socket_.Listen();
 
-    struct sockaddr_in server_addr;
-    CHECK(uv_ip4_addr("127.0.0.1", 3389, &server_addr) == 0);
-
     uv_buf_t buf = {(char *)"HELO", 4};
     socket_.Send(&buf, 1, (const sockaddr *)&server_addr);
-
-    return loop_.Run();
   }
 
   void OnKey(int key) {
@@ -682,5 +685,5 @@ int main(int argc, char *argv[]) {
   Loop loop;
   Client client(loop, window, model);
 
-  return client.Run();
+  return client.ConnectAndRun("127.0.0.1", 3389);
 }
