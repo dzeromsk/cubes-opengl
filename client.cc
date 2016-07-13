@@ -43,36 +43,12 @@ struct State {
 typedef std::vector<State> Frame;
 typedef std::vector<Frame> Frames;
 
-DEFINE_int32(cubes_count, 901, "Cubes count per frame");
-DEFINE_string(logfile, "models.log", "Path to log file");
-
 DEFINE_int32(width, 1280, "Window width");
 DEFINE_int32(height, 800, "Windows height");
 
 static Frames &Log() {
   static Frames log;
   return log;
-}
-
-static void ReadLog(std::string filename) {
-  FILE *f = nullptr;
-  CHECK(f = fopen(filename.c_str(), "rb"));
-  Log().clear();
-  for (int frame = 1; frame; frame++) {
-    std::vector<State> cubes;
-    for (int i = 0; i < FLAGS_cubes_count; i++) {
-      State s;
-      if (fread(&s, sizeof(State), 1, f) != 1) {
-        break;
-      }
-      cubes.push_back(s);
-    }
-    if (feof(f)) {
-      break;
-    }
-    Log().push_back(cubes);
-  }
-  fclose(f);
 }
 
 class Loop {
@@ -674,16 +650,12 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  // TODO(dzeromsk): Replace log with udp packets from server. Server will send
-  // state in loop. Then add interpolation and reduce state dumps to 10pps.
-  ReadLog(FLAGS_logfile);
-  CHECK(Log().size() > 0);
-
   Window &window = Window::Default();
   render::Model model;
 
   Loop loop;
   Client client(loop, window, model);
 
+  // TODO(dzeromsk): Add interpolation and reduce state dumps to 10pps.
   return client.ConnectAndRun("127.0.0.1", 3389);
 }
