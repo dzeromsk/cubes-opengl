@@ -43,6 +43,9 @@ typedef std::vector<Frame> Frames;
 DEFINE_int32(cubes_count, 901, "Cubes count per frame");
 DEFINE_string(logfile, "models.log", "Path to log file");
 
+DEFINE_string(server_addr, "127.0.0.1", "Server ip address");
+DEFINE_int32(server_port, 3389, "Server port");
+
 static Frames &Log() {
   static Frames log;
   return log;
@@ -231,7 +234,7 @@ private:
 
 class GameServer : public UDPServer {
 public:
-  GameServer() : timer_(loop_) {
+  GameServer() : timer_(loop_), seq_(0) {
     socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
                           unsigned flags) { OnReceive(buf, addr); });
 
@@ -241,9 +244,14 @@ public:
 private:
   void OnTick() {
     Frame &frame = Next();
-    uv_buf_t response = {(char *)frame.data(), frame.size() * sizeof(State)};
-    for (const auto &client : clients_) {
-      Send(client, &response);
+    seq_++;
+
+    if (!(seq_ % 12)) {
+      frame[0].interacting = seq_;
+      uv_buf_t response = {(char *)frame.data(), frame.size() * sizeof(State)};
+      for (const auto &client : clients_) {
+        Send(client, &response);
+      }
     }
   }
 
@@ -266,6 +274,7 @@ private:
     }
   }
 
+  int seq_;
   Timer timer_;
   std::set<Addr> clients_;
 };
@@ -278,5 +287,5 @@ int main(int argc, char *argv[]) {
   CHECK(Log().size() > 0);
 
   GameServer server;
-  return server.ListenAndServe("127.0.0.1", 3389);
+  return server.ListenAndServe(FLAGS_server_addr.c_str(), FLAGS_server_port);
 }

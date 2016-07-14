@@ -28,6 +28,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <deque>
 #include <functional>
 #include <string>
 #include <vector>
@@ -45,6 +46,9 @@ typedef std::vector<Frame> Frames;
 
 DEFINE_int32(width, 1280, "Window width");
 DEFINE_int32(height, 800, "Windows height");
+
+DEFINE_string(server_addr, "127.0.0.1", "Server ip address");
+DEFINE_int32(server_port, 3389, "Server port");
 
 static Frames &Log() {
   static Frames log;
@@ -538,12 +542,12 @@ class Client {
 public:
   Client(Loop &loop, Window &window, render::Model &model)
       : loop_(loop), window_(window), model_(model), socket_(loop),
-        width_(FLAGS_width), height_(FLAGS_height) {
+        width_(FLAGS_width), height_(FLAGS_height), seq_(0) {
     view_ = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
                         glm::vec3(0.0f, 1.0f, 0.0f));
   }
 
-  int ConnectAndRun(const char* server_ip, int port) {
+  int ConnectAndRun(const char *server_ip, int port) {
     Connect(server_ip, port);
 
     window_.OnResize([&](int w, int h) {
@@ -613,8 +617,8 @@ public:
     for (const auto &cube : frame) {
       // TODO(dzeromsk): compute model matrix and set color in
       // shader
-      glm::quat rot(cube.orientation[3], cube.orientation[0],
-                    cube.orientation[1], cube.orientation[2]);
+      glm::quat rot(cube.orientation[0], cube.orientation[1],
+                    cube.orientation[2], cube.orientation[3]);
 
       glm::mat4 translate = glm::translate(glm::mat4(1.0), cube.position);
       glm::mat4 rotate = glm::mat4_cast(rot);
@@ -627,14 +631,69 @@ public:
     window_.Swap();
   }
 
-  Frame &Next() { return frame_; }
+  Frame &Next() {
+    static bool buffering = true;
+    if (buffering) {
+      if (q_.size() >= 2) {
+        buffering = false;
+      }
+      printf("@");
+      return frame_;
+    } else {
+      if (q_.size() > 0) {
+        Frame y = q_.front();
+        float a = 1 - ((y[0].interacting - seq_) / 12.0f);
+        frame_ = mix(x_, y, a);
+        if (q_.size() > 0 && seq_ >= y[0].interacting) {
+          x_ = y;
+          q_.pop_front();
+          printf("!");
+        } else {
+          printf(".");
+        }
+
+        seq_++;
+        return frame_;
+      } else {
+        printf(":");
+        return x_;
+      }
+    }
+  }
+
+  Frame mix(Frame &a, Frame &b, float step) {
+    if (a.size() == b.size()) {
+      size_t size = a.size();
+
+      Frame m(size);
+      for (size_t i = 0; i < size; ++i) {
+        m[i].position = glm::mix(a[i].position, b[i].position, step);
+        m[i].orientation = glm::slerp(a[i].orientation, b[i].orientation, step);
+        m[i].interacting = a[i].interacting && b[i].interacting;
+      }
+
+      return m;
+    } else {
+      return b;
+    }
+  }
 
   void OnReceive(uv_buf_t request, const struct sockaddr *addr) {
-    frame_.assign((State *)request.base, (State *)(request.base + request.len));
+    static bool first_frame = true;
+    if (first_frame) {
+      seq_ = ((State *)request.base)->interacting;
+      first_frame = false;
+    }
+    q_.emplace_back((State *)request.base,
+                    (State *)(request.base + request.len));
   }
 
 private:
+  size_t seq_;
   Frame frame_;
+  Frame x_;
+  std::deque<Frame> q_;
+
   int width_;
   int height_;
 
@@ -657,5 +716,5 @@ int main(int argc, char *argv[]) {
   Client client(loop, window, model);
 
   // TODO(dzeromsk): Add interpolation and reduce state dumps to 10pps.
-  return client.ConnectAndRun("127.0.0.1", 3389);
+  return client.ConnectAndRun(FLAGS_server_addr.c_str(), FLAGS_server_port);
 }
