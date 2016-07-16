@@ -542,14 +542,13 @@ class Client {
 public:
   Client(Loop &loop, Window &window, render::Model &model)
       : loop_(loop), window_(window), model_(model), socket_(loop),
-        width_(FLAGS_width), height_(FLAGS_height), seq_(0) {
+        debug_socket_(loop), debug_enabled_(false), width_(FLAGS_width),
+        height_(FLAGS_height), seq_(0) {
     view_ = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
                         glm::vec3(0.0f, 1.0f, 0.0f));
   }
 
   int ConnectAndRun(const char *server_ip, int port) {
-    Connect(server_ip, port);
-
     window_.OnResize([&](int w, int h) {
       glViewport(0, 0, w, h);
       width_ = w;
@@ -562,23 +561,28 @@ public:
       }
     });
 
+    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
+                          unsigned flags) { OnReceive(buf, addr); });
+
+    debug_socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
+                                unsigned flags) { OnDebugReceive(buf, addr); });
+
     // TODO(dzeromsk): Send input to server at 30fps
     Timer input(&loop_, [&](Timer *t) { window_.Poll(); }, 32);
     Timer render(&loop_, [&](Timer *t) { OnFrame(); }, 16);
 
+    Connect(socket_, server_ip, port);
+
     return loop_.Run();
   }
 
-  void Connect(const char *ip, int port) {
+private:
+  void Connect(UDP &socket, const char *ip, int port) {
     struct sockaddr_in server_addr;
     CHECK(uv_ip4_addr(ip, port, &server_addr) == 0);
-
-    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
-                          unsigned flags) { OnReceive(buf, addr); });
-    socket_.Listen();
-
+    socket.Listen();
     uv_buf_t buf = {(char *)"HELO", 4};
-    socket_.Send(&buf, 1, (const sockaddr *)&server_addr);
+    socket.Send(&buf, 1, (const sockaddr *)&server_addr);
   }
 
   void OnKey(int key) {
@@ -594,6 +598,17 @@ public:
     case GLFW_KEY_2:
       view_ = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
                           glm::vec3(0.0f, 1.0f, 0.0f));
+      break;
+    case GLFW_KEY_F12:
+      debug_enabled_ = !debug_enabled_;
+      {
+        static bool once = true;
+        if (once) {
+          Connect(debug_socket_, FLAGS_server_addr.c_str(),
+                  FLAGS_server_port + 1);
+          once = false;
+        }
+      }
       break;
     default:
       break;
@@ -628,18 +643,23 @@ public:
 
     model_.Draw(models, view_, projection);
 
+    if (debug_enabled_) {
+      DrawDebug(view_, projection);
+    }
+
     window_.Swap();
   }
 
   Frame &Next() {
     static bool buffering = true;
     if (buffering) {
-      if (q_.size() >= 2) {
+      if (q_.size() > 1) {
         buffering = false;
       }
       printf("@");
-      return frame_;
+      return x_;
     } else {
+
       if (q_.size() > 0) {
         Frame y = q_.front();
         float a = 1 - ((y[0].interacting - seq_) / 12.0f);
@@ -674,7 +694,7 @@ public:
 
       return m;
     } else {
-      return b;
+      return a;
     }
   }
 
@@ -688,7 +708,27 @@ public:
                     (State *)(request.base + request.len));
   }
 
-private:
+  void DrawDebug(const glm::mat4 &view, const glm::mat4 &projection) {
+    std::vector<glm::mat4> models;
+    for (const auto &cube : debug_frame_) {
+      glm::quat rot(cube.orientation[0], cube.orientation[1],
+                    cube.orientation[2], cube.orientation[3]);
+
+      glm::mat4 translate = glm::translate(glm::mat4(1.0), cube.position);
+      glm::mat4 rotate = glm::mat4_cast(rot);
+
+      models.push_back(translate * rotate);
+    }
+    glEnable(GL_BLEND);
+    model_.Draw(models, view, projection);
+    glDisable(GL_BLEND);
+  }
+
+  void OnDebugReceive(uv_buf_t request, const struct sockaddr *addr) {
+    debug_frame_.assign((State *)request.base,
+                        (State *)(request.base + request.len));
+  }
+
   size_t seq_;
   Frame frame_;
   Frame x_;
@@ -701,6 +741,10 @@ private:
   render::Model &model_;
   Window &window_;
   UDP socket_;
+
+  bool debug_enabled_;
+  UDP debug_socket_;
+  Frame debug_frame_;
 
   glm::mat4 view_;
 };
@@ -715,6 +759,5 @@ int main(int argc, char *argv[]) {
   Loop loop;
   Client client(loop, window, model);
 
-  // TODO(dzeromsk): Add interpolation and reduce state dumps to 10pps.
   return client.ConnectAndRun(FLAGS_server_addr.c_str(), FLAGS_server_port);
 }

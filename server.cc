@@ -177,13 +177,23 @@ struct Addr {
 
 class UDPServer {
 public:
-  UDPServer() : socket_(loop_) {}
+  UDPServer(Loop &loop) : loop_(loop), socket_(loop_) {}
+
   typedef std::function<void(const uv_buf_t, const Addr)> ReceiveFunc;
-  UDPServer(ReceiveFunc on_receive)
-      : socket_(loop_), on_receive_(std::move(on_receive)) {
+
+  UDPServer(Loop &loop, ReceiveFunc on_receive)
+      : loop_(loop), socket_(loop), on_receive_(std::move(on_receive)) {
     socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
                           unsigned flags) { on_receive_(buf, addr); });
   }
+
+  void OnReceive(ReceiveFunc on_receive) {
+    on_receive_ = on_receive;
+    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
+                          unsigned flags) { on_receive_(buf, addr); });
+  }
+
+  void Listen(const char *ip, int port) { socket_.Listen(ip, port); }
 
   int ListenAndServe(const char *ip, int port) {
     socket_.Listen(ip, port);
@@ -197,7 +207,7 @@ public:
   }
 
 protected:
-  Loop loop_;
+  Loop &loop_;
   UDP socket_;
   ReceiveFunc on_receive_;
 };
@@ -232,51 +242,74 @@ private:
   uv_timer_t timer_;
 };
 
-class GameServer : public UDPServer {
+class GameServer {
 public:
-  GameServer() : timer_(loop_), seq_(0) {
-    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
-                          unsigned flags) { OnReceive(buf, addr); });
+  GameServer() : server_(loop_), debug_server_(loop_), timer_(loop_), seq_(0) {
+    server_.OnReceive(
+        [&](const uv_buf_t buf, const Addr addr) { OnReceive(buf, addr); });
 
-    timer_.Start([&] { OnTick(); }, 16);
+    debug_server_.OnReceive([&](const uv_buf_t buf, const Addr addr) {
+      OnDebugReceive(buf, addr);
+    });
+
+    timer_.Start(
+        [&] {
+          OnTick();
+          OnDebugTick();
+
+        },
+        16);
+  }
+
+  int ListenAndServe(const char *ip, int port) {
+    debug_server_.Listen(ip, port + 1);
+    // we use the same loop so as an side effect ListenAndServe will start debug
+    // server as well
+    return server_.ListenAndServe(ip, port);
   }
 
 private:
+  Frame &Next(int n) { return Log()[n % Log().size()]; }
+
+  void OnReceive(uv_buf_t request, Addr addr) {
+    // for now just register the client
+    clients_.emplace(addr);
+  }
+
   void OnTick() {
-    Frame &frame = Next();
+    Frame &frame = Next(seq_);
     seq_++;
 
     if (!(seq_ % 12)) {
       frame[0].interacting = seq_;
       uv_buf_t response = {(char *)frame.data(), frame.size() * sizeof(State)};
       for (const auto &client : clients_) {
-        Send(client, &response);
+        server_.Send(client, &response);
       }
     }
   }
 
-  Frame &Next() {
-    static size_t n = 0;
-    if (n >= Log().size()) {
-      n = 0;
-    }
-    return Log()[n++];
+  void OnDebugReceive(uv_buf_t request, Addr addr) {
+    debug_clients_.emplace(addr);
   }
 
-  void OnReceive(uv_buf_t request, Addr addr) {
-    clients_.emplace(addr);
+  void OnDebugTick() {
+    Frame &frame = Next(seq_);
 
-    uv_buf_t response = request;
-    for (const auto &client : clients_) {
-      if (client != addr) {
-        Send(client, &response);
-      }
+    uv_buf_t response = {(char *)frame.data(), frame.size() * sizeof(State)};
+    for (const auto &client : debug_clients_) {
+      debug_server_.Send(client, &response);
     }
   }
 
   int seq_;
+  Loop loop_;
+  UDPServer server_;
   Timer timer_;
   std::set<Addr> clients_;
+
+  UDPServer debug_server_;
+  std::set<Addr> debug_clients_;
 };
 
 int main(int argc, char *argv[]) {
