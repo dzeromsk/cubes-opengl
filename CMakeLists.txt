@@ -159,12 +159,16 @@ target_include_directories (server PUBLIC
   third_party/gflags/include/
   third_party/glog/
   third_party/glm/
+  third_party/bullet/src/
 )
 
 target_link_libraries (server
   uv
   glog
   gflags
+  BulletDynamics
+  BulletCollision
+  LinearMath
 )
 
 if (WIN32)

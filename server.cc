@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#include <btBulletDynamicsCommon.h>
 #include <gflags/gflags.h>
 #include <glm/glm.hpp>
 #include <glog/logging.h>
@@ -67,9 +68,9 @@ typedef std::vector<Frame> Frames;
 typedef std::vector<QState> QFrame;
 
 QState::QState(const State &s) {
-  position[0] = quantize(bound(s.position[0], -64, 64), 16);
-  position[1] = quantize(bound(s.position[1], -1, 31), 14);
-  position[2] = quantize(bound(s.position[2], -64, 64), 16);
+  position[0] = quantize(bound(s.position[0], -64, 64), 12);
+  position[1] = quantize(bound(s.position[1], -1, 31), 8);
+  position[2] = quantize(bound(s.position[2], -64, 64), 12);
 
   // interacting = !!s.interacting;
   interacting = s.interacting;
@@ -109,11 +110,20 @@ QState::QState(const State &s) {
   }
 }
 
-DEFINE_int32(cubes_count, 901, "Cubes count per frame");
+DEFINE_int32(log_cubes_count, 901, "Cubes count per frame");
 DEFINE_string(logfile, "models.log", "Path to log file");
 
 DEFINE_string(server_addr, "127.0.0.1", "Server ip address");
 DEFINE_int32(server_port, 3389, "Server port");
+
+DEFINE_double(force, 9e3f, "Attraction force");
+DEFINE_double(force_distance, 4.5f, "Attraction force distance cap");
+
+DEFINE_int32(max_speed, 18, "Max speed cap");
+DEFINE_double(default_mass, 10, "Default cube mass");
+DEFINE_int32(cubes_count, 15, "Small cube dimension");
+DEFINE_int32(player_scale, 4, "Player cube scale");
+DEFINE_double(player_mass, 1e3f, "Player cube mass");
 
 static Frames &Log() {
   static Frames log;
@@ -126,7 +136,7 @@ static void ReadLog(std::string filename) {
   Log().clear();
   for (int frame = 1; frame; frame++) {
     std::vector<State> cubes;
-    for (int i = 0; i < FLAGS_cubes_count; i++) {
+    for (int i = 0; i < FLAGS_log_cubes_count; i++) {
       State s;
       if (fread(&s, sizeof(State), 1, f) != 1) {
         break;
@@ -311,9 +321,219 @@ private:
   uv_timer_t timer_;
 };
 
+class Cube {
+  friend class World;
+
+public:
+  Cube(glm::vec3 position, float scale = 1, float mass = FLAGS_default_mass)
+      : scale_(scale) {
+    shape_ = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f) * scale_);
+    motionState_ = new btDefaultMotionState(
+        btTransform(btQuaternion(0, 0, 0, 1),
+                    btVector3(position.x, position.y, position.z)));
+
+    initial_position_ = position;
+
+    // btScalar mass = 10 * scale_;
+    btVector3 inertia(0, 0, 0);
+    shape_->calculateLocalInertia(mass, inertia);
+
+    btRigidBody::btRigidBodyConstructionInfo bodyCI(mass, motionState_, shape_,
+                                                    inertia);
+    bodyCI.m_friction = 100;
+    bodyCI.m_restitution = .0f;
+    body_ = new btRigidBody(bodyCI);
+
+    // TODO(dzeromsk): find better api to start object inactive
+    if (scale_ == 1) {
+      body_->updateDeactivation(10.0f);
+    }
+  }
+
+  ~Cube() {
+    delete body_;
+    delete motionState_;
+    delete shape_;
+  }
+
+  void Reset() {
+    btTransform transform = body_->getCenterOfMassTransform();
+    transform.setOrigin(btVector3(initial_position_.x, initial_position_.y,
+                                  initial_position_.z));
+    transform.setRotation(btQuaternion(0, 0, 0, 1));
+    body_->setCenterOfMassTransform(transform);
+    body_->getMotionState()->setWorldTransform(transform);
+    body_->setLinearVelocity(btVector3(0, 0, 0));
+    body_->setAngularVelocity(btVector3(0, 0, 0));
+    body_->clearForces();
+    body_->activate(true);
+    if (scale_ == 1) {
+      body_->updateDeactivation(10.0f);
+    }
+  }
+
+  void Force(const glm::vec3 &i) {
+    body_->activate(true);
+    auto a = body_->getLinearVelocity();
+    if (a.length() < FLAGS_max_speed) {
+      body_->setLinearVelocity(a + btVector3(i.x, i.y, i.z));
+    }
+  }
+
+  void Dump(State *state) {
+    const btVector3 &position = body_->getCenterOfMassPosition();
+    state->position[0] = position.getX();
+    state->position[1] = position.getY();
+    state->position[2] = position.getZ();
+
+    const btQuaternion orientation = body_->getOrientation();
+    state->orientation[1] = orientation.getX();
+    state->orientation[2] = orientation.getY();
+    state->orientation[3] = orientation.getZ();
+    state->orientation[0] = orientation.getW();
+
+    state->interacting = !body_->wantsSleeping();
+  }
+
+private:
+  btCollisionShape *shape_;
+  btDefaultMotionState *motionState_;
+  btRigidBody *body_;
+  glm::vec3 initial_position_;
+  float scale_;
+};
+
+class World {
+public:
+  World(glm::vec3 gravity) : player_(nullptr) {
+    collisionConfiguration_ = new btDefaultCollisionConfiguration();
+    dispatcher_ = new btCollisionDispatcher(collisionConfiguration_);
+    broadphase_ = new btDbvtBroadphase();
+    solver_ = new btSequentialImpulseConstraintSolver();
+    solver_->setRandSeed(0);
+    dynamicsWorld_ = new btDiscreteDynamicsWorld(
+        dispatcher_, broadphase_, solver_, collisionConfiguration_);
+    dynamicsWorld_->setGravity(btVector3(gravity.x, gravity.y, gravity.z));
+
+    groundShape_ = new btStaticPlaneShape(btVector3(0, 1, 0), 1);
+    groundMotionState_ = new btDefaultMotionState(
+        btTransform(btQuaternion(0, 0, 0, 1), btVector3(0, -1, 0)));
+
+    btRigidBody::btRigidBodyConstructionInfo groundRigidBodyCI(
+        0, groundMotionState_, groundShape_, btVector3(0, 0, 0));
+    groundRigidBody_ = new btRigidBody(groundRigidBodyCI);
+
+    dynamicsWorld_->addRigidBody(groundRigidBody_);
+  }
+
+  ~World() {
+    delete dynamicsWorld_;
+
+    delete groundShape_;
+    delete groundMotionState_;
+
+    delete solver_;
+    delete broadphase_;
+    delete dispatcher_;
+    delete collisionConfiguration_;
+
+    for (auto const cube : cubes_) {
+      delete cube;
+    }
+  }
+
+  void Add(Cube *cube) {
+    dynamicsWorld_->addRigidBody(cube->body_);
+    cubes_.push_back(cube);
+  }
+
+  void Player(Cube *cube) {
+    Add(cube);
+    player_ = cube;
+  }
+
+  void Update(float deltaTime) {
+
+    dynamicsWorld_->stepSimulation(deltaTime, 10);
+
+    if (player_) {
+      int bias = 1;
+      if (player_->body_->wantsSleeping()) {
+        bias = -1;
+      }
+
+      for (auto const c : cubes_) {
+
+        {
+          auto cube = c->body_;
+          ;
+          if (cube->wantsSleeping()) {
+            continue;
+          }
+
+          if (cube == player_->body_) {
+            continue;
+          }
+
+          btVector3 difference = player_->body_->getCenterOfMassPosition() -
+                                 cube->getCenterOfMassPosition();
+
+          btScalar distanceSquared = difference.length2();
+          btScalar distance = difference.length();
+
+          if (distance < FLAGS_force_distance) {
+            btVector3 direction = difference / distance * bias;
+            btScalar magnitude = FLAGS_force / distanceSquared;
+            cube->applyCentralForce(direction * magnitude);
+          }
+        }
+      }
+    }
+  }
+
+  void Reset() {
+    for (auto const cube : cubes_) {
+      cube->Reset();
+    }
+    dynamicsWorld_->clearForces();
+  }
+
+  void Dump(std::vector<State> &state) {
+    for (auto const cube : cubes_) {
+      State s;
+      cube->Dump(&s);
+      state.emplace_back(s);
+    }
+  }
+
+  void Dump(std::vector<QState> &state) {
+    for (auto const cube : cubes_) {
+      State s;
+      cube->Dump(&s);
+      state.emplace_back(s);
+    }
+  }
+
+private:
+  btDefaultCollisionConfiguration *collisionConfiguration_;
+  btCollisionDispatcher *dispatcher_;
+  btBroadphaseInterface *broadphase_;
+  btSequentialImpulseConstraintSolver *solver_;
+  btDiscreteDynamicsWorld *dynamicsWorld_;
+
+  btCollisionShape *groundShape_;
+  btDefaultMotionState *groundMotionState_;
+  btRigidBody *groundRigidBody_;
+
+  std::vector<Cube *> cubes_;
+  Cube *player_;
+};
+
 class GameServer {
 public:
-  GameServer() : server_(loop_), debug_server_(loop_), timer_(loop_), seq_(0) {
+  GameServer()
+      : server_(loop_), debug_server_(loop_), timer_(loop_), seq_(0),
+        world_(glm::vec3(0, -20, 0)) {
     server_.OnReceive(
         [&](const uv_buf_t buf, const Addr addr) { OnReceive(buf, addr); });
 
@@ -325,9 +545,19 @@ public:
         [&] {
           OnTick();
           OnDebugTick();
-
         },
         16);
+
+    for (int i = -FLAGS_cubes_count; i < FLAGS_cubes_count; ++i) {
+      for (int j = -FLAGS_cubes_count; j < FLAGS_cubes_count; ++j) {
+        world_.Add(new Cube(glm::vec3(i * 2, 0.5f, j * 2)));
+      }
+    }
+
+    world_.Player(
+        new Cube(glm::vec3(0, 15, 0), FLAGS_player_scale, FLAGS_player_mass));
+
+    world_.Reset();
   }
 
   int ListenAndServe(const char *ip, int port) {
@@ -338,7 +568,19 @@ public:
   }
 
 private:
-  Frame &Next(int n) { return Log()[n % Log().size()]; }
+  Frame &Next(int n) {
+    // return Log()[n % Log().size()];
+
+    world_.Update(16.0f / 1000);
+
+    frame_.clear();
+    world_.Dump(frame_);
+
+    qframe_.clear();
+    world_.Dump(qframe_);
+
+    return frame_;
+  }
 
   void OnReceive(uv_buf_t request, Addr addr) {
     // for now just register the client
@@ -346,12 +588,10 @@ private:
   }
 
   void OnTick() {
-    Frame &frame = Next(seq_);
+    Next(seq_);
     seq_++;
 
     if (!(seq_ % 6)) {
-      qframe_.assign(begin(frame), end(frame));
-
       qframe_[0].interacting = seq_;
       uv_buf_t response = {(char *)qframe_.data(),
                            qframe_.size() * sizeof(QState)};
@@ -381,9 +621,12 @@ private:
   std::set<Addr> clients_;
 
   QFrame qframe_;
+  Frame frame_;
 
   UDPServer debug_server_;
   std::set<Addr> debug_clients_;
+
+  World world_;
 };
 
 int main(int argc, char *argv[]) {

@@ -76,9 +76,9 @@ typedef std::vector<Frame> Frames;
 typedef std::vector<QState> QFrame;
 
 State::State(const QState &qs) {
-  position[0] = unbound(dequantize(qs.position[0], 16), -64, 64);
-  position[1] = unbound(dequantize(qs.position[1], 14), -1, 31);
-  position[2] = unbound(dequantize(qs.position[2], 16), -64, 64);
+  position[0] = unbound(dequantize(qs.position[0], 12), -64, 64);
+  position[1] = unbound(dequantize(qs.position[1], 8), -1, 31);
+  position[2] = unbound(dequantize(qs.position[2], 12), -64, 64);
 
   // interacting = !!qs.interacting;
   interacting = qs.interacting;
@@ -728,14 +728,14 @@ private:
           q_.pop_front();
           printf("!");
 
-          // TODO(dzeromsk): Refactor!
-          // We sometimes slip a frame on a client in comaprision to
-          // server so here we compensate... :/
-          if (q_.size() > 2) {
-            Frame &y = q_.front();
-            seq_ = y[0].interacting;
-            q_.pop_front();
-          }
+          // // TODO(dzeromsk): Refactor!
+          // // We sometimes slip a frame on a client in comaprision to
+          // // server so here we compensate... :/
+          // if (q_.size() > 2) {
+          //   Frame &y = q_.front();
+          //   seq_ = y[0].interacting;
+          //   q_.pop_front();
+          // }
         } else {
           printf(".");
         }
