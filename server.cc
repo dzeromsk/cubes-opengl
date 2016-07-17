@@ -404,6 +404,8 @@ private:
 };
 
 class World {
+  friend class GameServer;
+
 public:
   World(glm::vec3 gravity) : player_(nullptr) {
     collisionConfiguration_ = new btDefaultCollisionConfiguration();
@@ -583,8 +585,26 @@ private:
   }
 
   void OnReceive(uv_buf_t request, Addr addr) {
-    // for now just register the client
     clients_.emplace(addr);
+    switch (request.base[0]) {
+    case 'w':
+      world_.player_->Force(glm::vec3(0.f, 0.f, -1.f));
+      break;
+    case 's':
+      world_.player_->Force(glm::vec3(0.f, 0.f, 1.f));
+      break;
+    case 'a':
+      world_.player_->Force(glm::vec3(-1.f, 0.f, 0.f));
+      break;
+    case 'd':
+      world_.player_->Force(glm::vec3(1.f, 0.f, 0.f));
+      break;
+    case 'r':
+      world_.Reset();
+      break;
+    default:
+      break;
+    }
   }
 
   void OnTick() {

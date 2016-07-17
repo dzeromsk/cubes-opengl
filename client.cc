@@ -615,9 +615,9 @@ public:
     });
 
     window_.OnKey([&](int key, int action) {
-      if (action == GLFW_PRESS) {
-        OnKey(key);
-      }
+      // if (action == GLFW_PRESS) {
+      OnKey(key);
+      //}
     });
 
     socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
@@ -637,17 +637,37 @@ public:
 
 private:
   void Connect(UDP &socket, const char *ip, int port) {
-    struct sockaddr_in server_addr;
-    CHECK(uv_ip4_addr(ip, port, &server_addr) == 0);
+    CHECK(uv_ip4_addr(ip, port, &server_addr_) == 0);
     socket.Listen();
     uv_buf_t buf = {(char *)"HELO", 4};
-    socket.Send(&buf, 1, (const sockaddr *)&server_addr);
+    socket.Send(&buf, 1, (const sockaddr *)&server_addr_);
+  }
+
+  void Send(const char *command) {
+    uv_buf_t buf = {(char *)command, strlen(command)};
+    socket_.Send(&buf, 1, (const sockaddr *)&server_addr_);
   }
 
   void OnKey(int key) {
     switch (key) {
+    case GLFW_KEY_W:
+      Send("w");
+      break;
+    case GLFW_KEY_S:
+      Send("s");
+      break;
+    case GLFW_KEY_A:
+      Send("a");
+      break;
+    case GLFW_KEY_D:
+      Send("d");
+      break;
+    case GLFW_KEY_R:
+      Send("r");
+      break;
     case GLFW_KEY_ESCAPE:
     case GLFW_KEY_Q:
+      Send("q");
       loop_.Stop();
       break;
     case GLFW_KEY_1:
@@ -810,6 +830,7 @@ private:
   render::Model &model_;
   Window &window_;
   UDP socket_;
+  struct sockaddr_in server_addr_;
 
   bool debug_enabled_;
   UDP debug_socket_;
