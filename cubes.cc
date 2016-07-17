@@ -53,7 +53,7 @@ struct ServerData {
   World *world;
   Cube *cube;
   HUD *hud;
-  uv_udp_t* server;
+  uv_udp_t *server;
 };
 
 DEFINE_bool(show_origin, true, "Render \"server\" cube");
@@ -240,14 +240,15 @@ static void OnDump(uv_timer_t *handle) {
   auto data = (struct ServerData *)handle->data;
   state.clear();
 
-  //data->world->Dump(state);
+  // data->world->Dump(state);
   data->hud->SetDumpSize(state.size() * sizeof(Cube::State));
 
   // uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
   // uv_buf_t buf =
   //     uv_buf_init((char *)state.data(), state.size() * sizeof(Cube::State));
   // for (const auto client : active_clients) {
-  //   uv_udp_send(req, data->server, &buf, 1, (struct sockaddr *)&client, OnSend);
+  //   uv_udp_send(req, data->server, &buf, 1, (struct sockaddr *)&client,
+  //   OnSend);
   // }
 }
 
@@ -384,6 +385,7 @@ int main(int argc, char *argv[]) {
   prof::StartProfiling();
 
   FILE *f = fopen("models.log", "w");
+  FILE *q = fopen("quant.log", "w");
 
   while (glfwWindowShouldClose(window) == false) {
     glEnable(GL_DEPTH_TEST);
@@ -405,8 +407,8 @@ int main(int argc, char *argv[]) {
       input_history.append(input);
       uint8_t delayed_input = input_history[hud->GetInputDelay() * -1];
 
-      //OnInput(world, cube, delayed_input);
-      //OnInput(server_world, server_cube, delayed_input);
+      // OnInput(world, cube, delayed_input);
+      // OnInput(server_world, server_cube, delayed_input);
 
       uv_udp_send_t *req = (uv_udp_send_t *)malloc(sizeof(*req));
       uv_buf_t buf = uv_buf_init((char *)&delayed_input, sizeof(delayed_input));
@@ -459,6 +461,12 @@ int main(int argc, char *argv[]) {
         fwrite(state.data(), sizeof(Cube::State), state.size(), f);
       }
 
+      {
+        std::vector<Cube::QuantState> state;
+        server_world->Dump(state);
+        fwrite(state.data(), sizeof(Cube::QuantState), state.size(), q);
+      }
+
       hud->Draw();
 
       {
@@ -471,6 +479,7 @@ int main(int argc, char *argv[]) {
   prof::FinishProfiling();
 
   fclose(f);
+  fclose(q);
 
   glfwTerminate();
   uv_loop_close(loop);

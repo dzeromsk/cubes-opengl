@@ -160,6 +160,15 @@ public:
     }
   }
 
+  void Dump(std::vector<Cube::QuantState> &state) {
+    ScopedProfilingLabel label("World::Dump()");
+    for (auto const cube : cubes_) {
+      Cube::State s;
+      cube->Dump(&s);
+      state.emplace_back(s);
+    }
+  }
+
 private:
   btDefaultCollisionConfiguration *collisionConfiguration_;
   btCollisionDispatcher *dispatcher_;

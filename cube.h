@@ -26,6 +26,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <math.h>
+
 #include "cube_model.h"
 
 #define GEMMLOWP_PROFILING
@@ -44,6 +46,18 @@ private:
   type array_[size];
   size_t n_;
 };
+
+uint32_t quantize(float x, int max_bits) {
+  return x * ((1 << max_bits) - 1) + 0.5;
+}
+
+float dequantize(uint32_t x, int max_bits) {
+  return float(x) / ((1 << max_bits) - 1);
+}
+
+float bound(float x, float min, float max) { return (x - min) / (max - min); }
+
+float unbound(float x, float min, float max) { return x * (max - min) + min; }
 
 DEFINE_int32(max_speed, 18, "Max speed cap");
 DEFINE_double(default_mass, 10, "Default cube mass");
@@ -169,6 +183,55 @@ public:
     float position[3];
     float orientation[4];
     uint32_t interacting;
+  };
+
+  struct QuantState {
+    int orientation_largest;
+    int orientation[3];
+    int position[3];
+    int interacting;
+
+    QuantState(const State &s) {
+      position[0] = quantize(bound(s.position[0], -256, 256), 18);
+      position[1] = quantize(bound(s.position[1], -256, 256), 18);
+      position[2] = quantize(bound(s.position[2], 0, 32), 14);
+
+      interacting = !!s.interacting;
+
+      // orientation smallest three method
+
+      // find largest dimension
+      float max = 0.0f;
+      uint8_t maxno = 0;
+      for (int i = 0; i < 4; i++) {
+        float v = fabs(s.orientation[i]);
+        if (v > max) {
+          max = s.orientation[i];
+          maxno = i;
+        }
+      }
+      orientation_largest = maxno;
+
+      // save remaining dimensions
+      glm::vec3 abc(0.0f);
+      for (int i = 0, j = 0; i < 4; i++) {
+        if (i != maxno) {
+          abc[j++] = s.orientation[i];
+        }
+      }
+
+      // remeber to handle sign
+      if (max < 0) {
+        abc *= -1;
+      }
+
+      float minimum = -1.0f / 1.414214f; // 1.0f / sqrt(2)
+      float maximum = +1.0f / 1.414214f;
+
+      for (int i = 0; i < 3; i++) {
+        orientation[i] = quantize(bound(abc[i], minimum, maximum), 9);
+      }
+    }
   };
 #pragma pack(pop)
 

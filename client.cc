@@ -28,21 +28,79 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <cmath>
 #include <deque>
 #include <functional>
 #include <string>
 #include <vector>
 
+inline uint32_t quantize(float x, int max_bits) {
+  return x * ((1 << max_bits) - 1) + 0.5;
+}
+
+inline float dequantize(uint32_t x, int max_bits) {
+  return float(x) / ((1 << max_bits) - 1);
+}
+
+inline float bound(float x, float min, float max) {
+  return (x - min) / (max - min);
+}
+
+inline float unbound(float x, float min, float max) {
+  return x * (max - min) + min;
+}
+
 #pragma pack(push, 1)
+
+struct QState {
+  int orientation_largest;
+  int orientation[3];
+  int position[3];
+  int interacting;
+};
+
 struct State {
   glm::vec3 position;
   glm::quat orientation;
   uint32_t interacting;
+
+  State() = default;
+  State(const QState &qs);
 };
+
 #pragma pack(pop)
 
 typedef std::vector<State> Frame;
 typedef std::vector<Frame> Frames;
+
+typedef std::vector<QState> QFrame;
+
+State::State(const QState &qs) {
+  position[0] = unbound(dequantize(qs.position[0], 31), -256, 256);
+  position[1] = unbound(dequantize(qs.position[1], 31), -256, 256);
+  position[2] = unbound(dequantize(qs.position[2], 31), -256, 256);
+
+  interacting = !!qs.interacting;
+
+  // smallest three method
+
+  float minimum = -1.0f / 1.414214f; // 1.0f / sqrt(2)
+  float maximum = +1.0f / 1.414214f;
+
+  glm::vec3 abc;
+  for (int i = 0; i < 3; i++) {
+    abc[i] = unbound(dequantize(qs.orientation[i], 9), minimum, maximum);
+  }
+
+  for (int i = 0, j = 0; i < 4; i++) {
+    if (i == qs.orientation_largest) {
+      orientation[i] =
+          sqrtf(1 - abc[0] * abc[0] - abc[1] * abc[1] - abc[2] * abc[2]);
+    } else {
+      orientation[i] = abc[j++];
+    }
+  }
+}
 
 DEFINE_int32(width, 1280, "Window width");
 DEFINE_int32(height, 800, "Windows height");
@@ -662,7 +720,7 @@ private:
 
       if (q_.size() > 0) {
         Frame y = q_.front();
-        float a = 1 - ((y[0].interacting - seq_) / 12.0f);
+        float a = 1 - ((y[0].interacting - seq_) / 6.0f);
         frame_ = mix(x_, y, a);
         if (q_.size() > 0 && seq_ >= y[0].interacting) {
           x_ = y;
@@ -676,7 +734,7 @@ private:
         return frame_;
       } else {
         printf(":");
-        return x_;
+        return frame_;
       }
     }
   }
@@ -704,8 +762,8 @@ private:
       seq_ = ((State *)request.base)->interacting;
       first_frame = false;
     }
-    q_.emplace_back((State *)request.base,
-                    (State *)(request.base + request.len));
+    q_.emplace_back((QState *)request.base,
+                    (QState *)(request.base + request.len));
   }
 
   void DrawDebug(const glm::mat4 &view, const glm::mat4 &projection) {

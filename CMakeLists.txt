@@ -175,3 +175,29 @@ endif (WIN32)
 if (UNIX)
   target_compile_options (server PUBLIC -g -Wextra -std=c++14)
 endif (UNIX)
+
+add_executable (testx
+  test.cc
+)
+
+target_include_directories (testx PUBLIC
+  third_party/libuv/libuv/include/
+  third_party/gflags/include/
+  third_party/glog/
+  third_party/glm/
+)
+
+target_link_libraries (testx
+  uv
+  glog
+  gflags
+)
+
+if (WIN32)
+  target_compile_options (testx PUBLIC /W4 /fp:strict)
+  target_link_libraries (testx ws2_32 iphlpapi psapi userenv)
+endif (WIN32)
+
+if (UNIX)
+  target_compile_options (testx PUBLIC -g -Wextra -std=c++14)
+endif (UNIX)

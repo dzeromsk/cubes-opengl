@@ -26,19 +26,87 @@
 #include <functional>
 #include <set>
 
+#define container_of(ptr, type, member)                                        \
+  ((type *)((char *)(ptr)-offsetof(type, member)))
+
+inline uint32_t quantize(float x, int max_bits) {
+  return x * ((1 << max_bits) - 1) + 0.5;
+}
+
+inline float dequantize(uint32_t x, int max_bits) {
+  return float(x) / ((1 << max_bits) - 1);
+}
+
+inline float bound(float x, float min, float max) {
+  return (x - min) / (max - min);
+}
+
+inline float unbound(float x, float min, float max) {
+  return x * (max - min) + min;
+}
+
 #pragma pack(push, 1)
 struct State {
   glm::vec3 position;
   glm::vec4 orientation;
   uint32_t interacting;
 };
-#pragma pack(pop)
+struct QState {
+  int orientation_largest;
+  int orientation[3];
+  int position[3];
+  int interacting;
 
-#define container_of(ptr, type, member)                                        \
-  ((type *)((char *)(ptr)-offsetof(type, member)))
+  QState(const State &s);
+};
+#pragma pack(pop)
 
 typedef std::vector<State> Frame;
 typedef std::vector<Frame> Frames;
+
+typedef std::vector<QState> QFrame;
+
+QState::QState(const State &s) {
+  position[0] = quantize(bound(s.position[0], -256, 256), 31);
+  position[1] = quantize(bound(s.position[1], -256, 256), 31);
+  position[2] = quantize(bound(s.position[2], -256, 256), 31);
+
+  interacting = !!s.interacting;
+
+  // orientation smallest three method
+
+  // find largest dimension
+  float max = 0.0f;
+  uint8_t maxno = 0;
+  for (int i = 0; i < 4; i++) {
+    float v = fabs(s.orientation[i]);
+    if (v > max) {
+      max = s.orientation[i];
+      maxno = i;
+    }
+  }
+  orientation_largest = maxno;
+
+  // save remaining dimensions
+  glm::vec3 abc(0.0f);
+  for (int i = 0, j = 0; i < 4; i++) {
+    if (i != maxno) {
+      abc[j++] = s.orientation[i];
+    }
+  }
+
+  // remeber to handle sign
+  if (max < 0) {
+    abc *= -1;
+  }
+
+  float minimum = -1.0f / 1.414214f; // 1.0f / sqrt(2)
+  float maximum = +1.0f / 1.414214f;
+
+  for (int i = 0; i < 3; i++) {
+    orientation[i] = quantize(bound(abc[i], minimum, maximum), 9);
+  }
+}
 
 DEFINE_int32(cubes_count, 901, "Cubes count per frame");
 DEFINE_string(logfile, "models.log", "Path to log file");
@@ -280,9 +348,12 @@ private:
     Frame &frame = Next(seq_);
     seq_++;
 
-    if (!(seq_ % 12)) {
-      frame[0].interacting = seq_;
-      uv_buf_t response = {(char *)frame.data(), frame.size() * sizeof(State)};
+    if (!(seq_ % 6)) {
+      QFrame qframe(begin(frame), end(frame));
+
+      qframe[0].interacting = seq_;
+      uv_buf_t response = {(char *)qframe.data(),
+                           qframe.size() * sizeof(QState)};
       for (const auto &client : clients_) {
         server_.Send(client, &response);
       }
