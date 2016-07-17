@@ -67,11 +67,12 @@ typedef std::vector<Frame> Frames;
 typedef std::vector<QState> QFrame;
 
 QState::QState(const State &s) {
-  position[0] = quantize(bound(s.position[0], -256, 256), 31);
-  position[1] = quantize(bound(s.position[1], -256, 256), 31);
-  position[2] = quantize(bound(s.position[2], -256, 256), 31);
+  position[0] = quantize(bound(s.position[0], -64, 64), 16);
+  position[1] = quantize(bound(s.position[1], -1, 31), 14);
+  position[2] = quantize(bound(s.position[2], -64, 64), 16);
 
-  interacting = !!s.interacting;
+  // interacting = !!s.interacting;
+  interacting = s.interacting;
 
   // orientation smallest three method
 
@@ -81,7 +82,7 @@ QState::QState(const State &s) {
   for (int i = 0; i < 4; i++) {
     float v = fabs(s.orientation[i]);
     if (v > max) {
-      max = s.orientation[i];
+      max = v;
       maxno = i;
     }
   }
@@ -96,7 +97,7 @@ QState::QState(const State &s) {
   }
 
   // remeber to handle sign
-  if (max < 0) {
+  if (s.orientation[maxno] < 0) {
     abc *= -1;
   }
 
@@ -104,7 +105,7 @@ QState::QState(const State &s) {
   float maximum = +1.0f / 1.414214f;
 
   for (int i = 0; i < 3; i++) {
-    orientation[i] = quantize(bound(abc[i], minimum, maximum), 9);
+    orientation[i] = quantize(bound(abc[i], minimum, maximum), 7);
   }
 }
 
@@ -349,11 +350,11 @@ private:
     seq_++;
 
     if (!(seq_ % 6)) {
-      QFrame qframe(begin(frame), end(frame));
+      qframe_.assign(begin(frame), end(frame));
 
-      qframe[0].interacting = seq_;
-      uv_buf_t response = {(char *)qframe.data(),
-                           qframe.size() * sizeof(QState)};
+      qframe_[0].interacting = seq_;
+      uv_buf_t response = {(char *)qframe_.data(),
+                           qframe_.size() * sizeof(QState)};
       for (const auto &client : clients_) {
         server_.Send(client, &response);
       }
@@ -378,6 +379,8 @@ private:
   UDPServer server_;
   Timer timer_;
   std::set<Addr> clients_;
+
+  QFrame qframe_;
 
   UDPServer debug_server_;
   std::set<Addr> debug_clients_;

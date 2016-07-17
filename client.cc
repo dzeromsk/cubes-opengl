@@ -76,11 +76,12 @@ typedef std::vector<Frame> Frames;
 typedef std::vector<QState> QFrame;
 
 State::State(const QState &qs) {
-  position[0] = unbound(dequantize(qs.position[0], 31), -256, 256);
-  position[1] = unbound(dequantize(qs.position[1], 31), -256, 256);
-  position[2] = unbound(dequantize(qs.position[2], 31), -256, 256);
+  position[0] = unbound(dequantize(qs.position[0], 16), -64, 64);
+  position[1] = unbound(dequantize(qs.position[1], 14), -1, 31);
+  position[2] = unbound(dequantize(qs.position[2], 16), -64, 64);
 
-  interacting = !!qs.interacting;
+  // interacting = !!qs.interacting;
+  interacting = qs.interacting;
 
   // smallest three method
 
@@ -89,7 +90,7 @@ State::State(const QState &qs) {
 
   glm::vec3 abc;
   for (int i = 0; i < 3; i++) {
-    abc[i] = unbound(dequantize(qs.orientation[i], 9), minimum, maximum);
+    abc[i] = unbound(dequantize(qs.orientation[i], 7), minimum, maximum);
   }
 
   for (int i = 0, j = 0; i < 4; i++) {
@@ -726,6 +727,15 @@ private:
           x_ = y;
           q_.pop_front();
           printf("!");
+
+          // TODO(dzeromsk): Refactor!
+          // We sometimes slip a frame on a client in comaprision to
+          // server so here we compensate... :/
+          if (q_.size() > 2) {
+            Frame &y = q_.front();
+            seq_ = y[0].interacting;
+            q_.pop_front();
+          }
         } else {
           printf(".");
         }
@@ -759,9 +769,10 @@ private:
   void OnReceive(uv_buf_t request, const struct sockaddr *addr) {
     static bool first_frame = true;
     if (first_frame) {
-      seq_ = ((State *)request.base)->interacting;
+      seq_ = ((QState *)request.base)->interacting;
       first_frame = false;
     }
+
     q_.emplace_back((QState *)request.base,
                     (QState *)(request.base + request.len));
   }

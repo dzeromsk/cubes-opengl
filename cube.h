@@ -194,7 +194,7 @@ public:
     QuantState(const State &s) {
       position[0] = quantize(bound(s.position[0], -256, 256), 18);
       position[1] = quantize(bound(s.position[1], -256, 256), 18);
-      position[2] = quantize(bound(s.position[2], 0, 32), 14);
+      position[2] = quantize(bound(s.position[2], -256, 256), 18);
 
       interacting = !!s.interacting;
 

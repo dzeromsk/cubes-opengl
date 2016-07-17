@@ -24,6 +24,8 @@
 #include <glog/logging.h>
 #include <uv.h>
 
+#include <math.h>
+
 uint32_t quantize(float x, int max_bits) {
   return x * ((1 << max_bits) - 1) + 0.5;
 }
@@ -36,7 +38,7 @@ float bound(float x, float min, float max) { return (x - min) / (max - min); }
 
 float unbound(float x, float min, float max) { return x * (max - min) + min; }
 
-struct QuantState;
+struct QState;
 
 #pragma pack(push, 1)
 struct State {
@@ -44,23 +46,24 @@ struct State {
   float orientation[4];
   uint32_t interacting;
 
-  State(const QuantState &qs);
+  State(const QState &qs);
+  State() = default;
 };
 
-struct QuantState {
+struct QState {
   int orientation_largest;
   int orientation[3];
   int position[3];
   int interacting;
 
-  QuantState(const State &s);
+  QState(const State &s);
 };
 #pragma pack(pop)
 
-State::State(const QuantState &qs) {
-  position[0] = unbound(dequantize(qs.position[0], 18), -256, 256);
-  position[1] = unbound(dequantize(qs.position[1], 18), -256, 256);
-  position[2] = unbound(dequantize(qs.position[2], 14), 0, 32);
+State::State(const QState &qs) {
+  position[0] = unbound(dequantize(qs.position[0], 16), -64, 64);
+  position[1] = unbound(dequantize(qs.position[1], 14), -1, 31);
+  position[2] = unbound(dequantize(qs.position[2], 16), -64, 64);
 
   interacting = !!qs.interacting;
 
@@ -84,10 +87,10 @@ State::State(const QuantState &qs) {
   }
 }
 
-QuantState::QuantState(const State &s) {
-  position[0] = quantize(bound(s.position[0], -256, 256), 18);
-  position[1] = quantize(bound(s.position[1], -256, 256), 18);
-  position[2] = quantize(bound(s.position[2], 0, 32), 14);
+QState::QState(const State &s) {
+  position[0] = quantize(bound(s.position[0], -64, 64), 16);
+  position[1] = quantize(bound(s.position[1], -1, 31), 14);
+  position[2] = quantize(bound(s.position[2], -64, 64), 16);
 
   interacting = !!s.interacting;
 
@@ -99,7 +102,7 @@ QuantState::QuantState(const State &s) {
   for (int i = 0; i < 4; i++) {
     float v = fabs(s.orientation[i]);
     if (v > max) {
-      max = s.orientation[i];
+      max = v;
       maxno = i;
     }
   }
@@ -114,7 +117,7 @@ QuantState::QuantState(const State &s) {
   }
 
   // remeber to handle sign
-  if (max < 0) {
+  if (s.orientation[maxno] < 0) {
     abc *= -1;
   }
 
@@ -126,9 +129,91 @@ QuantState::QuantState(const State &s) {
   }
 }
 
+typedef std::vector<State> Frame;
+typedef std::vector<Frame> Frames;
+
+typedef std::vector<QState> QFrame;
+
+static Frames &Log() {
+  static Frames log;
+  return log;
+}
+
+static void ReadLog(std::string filename) {
+  FILE *f = nullptr;
+  CHECK(f = fopen(filename.c_str(), "rb"));
+  Log().clear();
+
+  float max = 0, min = 0;
+  for (int frame = 1; frame; frame++) {
+    std::vector<State> cubes;
+    for (int i = 0; i < 901; i++) {
+      State s;
+      if (fread(&s, sizeof(State), 1, f) != 1) {
+        break;
+      }
+      cubes.push_back(s);
+      // for (int i = 0; i < 3; i++)
+      {
+        int i = 2;
+        if (s.position[i] > max) {
+          max = s.position[i];
+        }
+        if (s.position[i] < min) {
+          min = s.position[i];
+        }
+      }
+    }
+    if (feof(f)) {
+      break;
+    }
+    Log().push_back(cubes);
+  }
+  fclose(f);
+  printf("max %f, min %f\n", max, min);
+}
+
+bool valid(float aa, float bb) {
+  float diff;
+  float a = fabs(aa);
+  float b = fabs(bb);
+
+  if (a > b)
+    diff = (a - b);
+  else
+    diff = (b - a);
+
+  return diff < 0.1;
+}
+
+#define VALID(x, y)                                                            \
+  if (!valid(x, y)) {                                                          \
+    printf("{a: %f, b: %f}\n", x, y);                                          \
+  }
+
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
+
+  ReadLog("models.log");
+
+  for (const auto &frame : Log()) {
+    for (const auto &a : frame) {
+      QState b(a);
+      State c(b);
+
+      VALID(a.position[0], c.position[0]);
+      VALID(a.position[1], c.position[1]);
+      VALID(a.position[2], c.position[2]);
+
+      CHECK_EQ(a.interacting, c.interacting);
+
+      VALID(a.orientation[0], c.orientation[0]);
+      VALID(a.orientation[1], c.orientation[1]);
+      VALID(a.orientation[2], c.orientation[2]);
+      VALID(a.orientation[3], c.orientation[3]);
+    }
+  }
 
   return 0;
 }
