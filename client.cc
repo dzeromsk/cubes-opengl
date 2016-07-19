@@ -615,9 +615,10 @@ public:
     });
 
     window_.OnKey([&](int key, int action) {
-      // if (action == GLFW_PRESS) {
+      if (action == GLFW_PRESS) {
+        OnKeyPress(key);
+      }
       OnKey(key);
-      //}
     });
 
     socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
@@ -630,17 +631,18 @@ public:
     Timer input(&loop_, [&](Timer *t) { window_.Poll(); }, 32);
     Timer render(&loop_, [&](Timer *t) { OnFrame(); }, 16);
 
-    Connect(socket_, server_ip, port);
+    CHECK(uv_ip4_addr(server_ip, port, &server_addr_) == 0);
+
+    Connect(socket_, server_addr_);
 
     return loop_.Run();
   }
 
 private:
-  void Connect(UDP &socket, const char *ip, int port) {
-    CHECK(uv_ip4_addr(ip, port, &server_addr_) == 0);
+  void Connect(UDP &socket, const struct sockaddr_in &addr) {
     socket.Listen();
     uv_buf_t buf = {(char *)"HELO", 4};
-    socket.Send(&buf, 1, (const sockaddr *)&server_addr_);
+    socket.Send(&buf, 1, (const sockaddr *)&addr);
   }
 
   void Send(const char *command) {
@@ -670,6 +672,13 @@ private:
       Send("q");
       loop_.Stop();
       break;
+    default:
+      break;
+    }
+  }
+
+  void OnKeyPress(int key) {
+    switch (key) {
     case GLFW_KEY_1:
       view_ = glm::lookAt(glm::vec3(0.f, 15.f, 25.f), glm::vec3(0, 0, 0),
                           glm::vec3(0.0f, 1.0f, 0.0f));
@@ -683,8 +692,9 @@ private:
       {
         static bool once = true;
         if (once) {
-          Connect(debug_socket_, FLAGS_server_addr.c_str(),
-                  FLAGS_server_port + 1);
+          CHECK(uv_ip4_addr(FLAGS_server_addr.c_str(), FLAGS_server_port + 1,
+                            &debug_addr_) == 0);
+          Connect(debug_socket_, debug_addr_);
           once = false;
         }
       }
@@ -835,6 +845,7 @@ private:
   bool debug_enabled_;
   UDP debug_socket_;
   Frame debug_frame_;
+  struct sockaddr_in debug_addr_;
 
   glm::mat4 view_;
 };
