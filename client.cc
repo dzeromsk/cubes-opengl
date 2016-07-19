@@ -300,13 +300,17 @@ namespace render {
 const char *kVertexSource = GLSL(
   in vec3 position;
   in vec3 normal;
-  in mat4 model; // instance
+
+  // state
+  in vec3 pos; // instance
+  in vec4 orie; // instance
 
   out vec3 FragPos;
   out vec3 Normal;
 
   uniform mat4 view;
   uniform mat4 projection;
+  uniform float alpha;
 
   void mat4_from_quat(out mat4 m, in vec4 q) {
     float xx = q.x * q.x;
@@ -334,14 +338,18 @@ const char *kVertexSource = GLSL(
     m[2][2] = 1 - 2 * (xx + yy);
     m[2][3] = 0;
 
-    m[3][3] = 0;
-    m[3][3] = 0;
-    m[3][3] = 0;
+    m[3][0] = 0;
+    m[3][1] = 0;
+    m[3][2] = 0;
     m[3][3] = 1;
   }
 
   void main() {
-    gl_Position = projection * view * model * vec4(position, 1.0f);
+    mat4 model;
+    mat4_from_quat(model, orie);
+    model[3] = vec4(pos, 1.0f);
+    //gl_Position = projection * view * model * vec4(position, 1.0f);
+    gl_Position = projection * view * model * vec4(position, alpha);
     FragPos = vec3(model * vec4(position, 1.0f));
     Normal = vec3(model * vec4(normal, 0));
   }
@@ -494,19 +502,24 @@ struct Model {
   GLint light_color;
   GLint light_position;
 
+  // state
+  GLint pos;
+  GLint orie;
+  GLint flags;
+
   GLint position;
   GLint normal;
-  GLint model;
+  GLint alpha;
 
   GLuint VBO[2];
   GLuint VAO;
 
   size_t vertices_size;
-  size_t models_size;
+  size_t frame_size;
 
   Model()
       : program(kVertexSource, kFragmentSource), vertices_size(kVerticesSize),
-        models_size(0) {
+        frame_size(0) {
     glGenVertexArrays(1, &VAO);
     glGenBuffers(2, VBO);
     Locations();
@@ -528,13 +541,16 @@ struct Model {
     GET(object_color);
     GET(light_color);
     GET(light_position);
+    GET(alpha);
 #undef GET
 #define GET(name)                                                              \
   name = glGetAttribLocation(program.program, #name);                          \
   CHECK(name > -1) << #name;
     GET(position)
     GET(normal)
-    GET(model);
+    GET(pos);
+    GET(orie);
+// GET(flags);
 #undef GET
   }
 
@@ -554,13 +570,20 @@ struct Model {
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
 
-    // Model attribute
-    for (int i = 0; i < 4; i++) {
-      glVertexAttribPointer(model + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4),
-                            (void *)(sizeof(glm::vec4) * i));
-      glEnableVertexAttribArray(model + i);
-      glVertexAttribDivisor(model + i, 1);
-    }
+    glVertexAttribPointer(pos, 3, GL_FLOAT, GL_FALSE, sizeof(State),
+                          (GLvoid *)0);
+    glEnableVertexAttribArray(pos);
+    glVertexAttribDivisor(pos, 1);
+
+    glVertexAttribPointer(orie, 4, GL_FLOAT, GL_FALSE, sizeof(State),
+                          (GLvoid *)(sizeof(glm::vec3)));
+    glEnableVertexAttribArray(orie);
+    glVertexAttribDivisor(orie, 1);
+
+    // glVertexAttribPointer(flags, 1, GL_UNSIGNED_INT, GL_FALSE, sizeof(State),
+    //                       (GLvoid *)(sizeof(glm::vec3) + sizeof(glm::vec4)));
+    // glEnableVertexAttribArray(flags);
+    // glVertexAttribDivisor(flags, 1);
 
     glBindVertexArray(0);
   }
@@ -570,16 +593,15 @@ struct Model {
     glBufferData(GL_ARRAY_BUFFER, size, vertices, GL_STATIC_DRAW);
   }
 
-  void WriteModel(const std::vector<glm::mat4> &models) {
+  void WriteState(const Frame &frame) {
     glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
-    glBufferData(GL_ARRAY_BUFFER, models.size() * sizeof(glm::mat4),
-                 models.data(), GL_STATIC_DRAW);
-    models_size = models.size();
+    glBufferData(GL_ARRAY_BUFFER, frame.size() * sizeof(State), frame.data(),
+                 GL_STATIC_DRAW);
+    frame_size = frame.size();
   }
 
-  void Draw(const std::vector<glm::mat4> &models, const glm::mat4 &v,
-            const glm::mat4 &p) {
-    WriteModel(models);
+  void Draw(const Frame &frame, const glm::mat4 &v, const glm::mat4 &p) {
+    WriteState(frame);
     program.Use();
 
     glUniformMatrix4fv(view, 1, GL_FALSE, glm::value_ptr(v));
@@ -589,8 +611,10 @@ struct Model {
     glUniform3f(light_color, 1.0f, 1.0f, 1.0f);
     glUniform3f(light_position, 0.f, 25.f, 25.f);
 
+    glUniform1f(alpha, 1.0f);
+
     glBindVertexArray(VAO);
-    glDrawArraysInstanced(GL_TRIANGLES, 0, vertices_size / 6, models_size);
+    glDrawArraysInstanced(GL_TRIANGLES, 0, vertices_size / 6, frame_size);
     glBindVertexArray(0);
   }
 };
@@ -717,20 +741,18 @@ private:
     glBlendFunc(GL_ONE, GL_SRC_ALPHA);
     glDisable(GL_BLEND);
 
-    std::vector<glm::mat4> models;
-    for (const auto &cube : frame) {
-      // TODO(dzeromsk): compute model matrix and set color in
-      // shader
-      glm::quat rot(cube.orientation[0], cube.orientation[1],
-                    cube.orientation[2], cube.orientation[3]);
+    // std::vector<glm::mat4> models;
+    // for (const auto &cube : frame) {
+    //   // TODO(dzeromsk): compute model matrix and set color in
+    //   // shader
 
-      glm::mat4 translate = glm::translate(glm::mat4(1.0), cube.position);
-      glm::mat4 rotate = glm::mat4_cast(rot);
+    //   glm::mat4 translate = glm::translate(glm::mat4(1.0), cube.position);
+    //   glm::mat4 rotate = glm::mat4_cast(cube.orientation);
 
-      models.push_back(translate * rotate);
-    }
+    //   models.push_back(translate * rotate);
+    // }
 
-    model_.Draw(models, view_, projection);
+    model_.Draw(frame, view_, projection);
 
     if (debug_enabled_) {
       DrawDebug(view_, projection);
@@ -808,18 +830,8 @@ private:
   }
 
   void DrawDebug(const glm::mat4 &view, const glm::mat4 &projection) {
-    std::vector<glm::mat4> models;
-    for (const auto &cube : debug_frame_) {
-      glm::quat rot(cube.orientation[0], cube.orientation[1],
-                    cube.orientation[2], cube.orientation[3]);
-
-      glm::mat4 translate = glm::translate(glm::mat4(1.0), cube.position);
-      glm::mat4 rotate = glm::mat4_cast(rot);
-
-      models.push_back(translate * rotate);
-    }
     glEnable(GL_BLEND);
-    model_.Draw(models, view, projection);
+    model_.Draw(debug_frame_, view, projection);
     glDisable(GL_BLEND);
   }
 

@@ -388,10 +388,10 @@ public:
     state->position[2] = position.getZ();
 
     const btQuaternion orientation = body_->getOrientation();
-    state->orientation[1] = orientation.getX();
-    state->orientation[2] = orientation.getY();
-    state->orientation[3] = orientation.getZ();
-    state->orientation[0] = orientation.getW();
+    state->orientation[0] = orientation.getX();
+    state->orientation[1] = orientation.getY();
+    state->orientation[2] = orientation.getZ();
+    state->orientation[3] = orientation.getW();
 
     state->interacting = !body_->wantsSleeping();
   }
