@@ -25,6 +25,7 @@
 #include <uv.h>
 
 #include <functional>
+#include <map>
 #include <set>
 
 #define container_of(ptr, type, member)                                        \
@@ -407,7 +408,7 @@ class World {
   friend class GameServer;
 
 public:
-  World(glm::vec3 gravity) : player_(nullptr) {
+  World(glm::vec3 gravity) {
     collisionConfiguration_ = new btDefaultCollisionConfiguration();
     dispatcher_ = new btCollisionDispatcher(collisionConfiguration_);
     broadphase_ = new btDbvtBroadphase();
@@ -450,45 +451,42 @@ public:
   }
 
   void Player(Cube *cube) {
+    players_.push_back(cube);
     Add(cube);
-    player_ = cube;
   }
 
   void Update(float deltaTime) {
-
     dynamicsWorld_->stepSimulation(deltaTime, 10);
 
-    if (player_) {
-      int bias = 1;
-      if (player_->body_->wantsSleeping()) {
-        bias = -1;
+    for (auto p : players_) {
+      Katamari(p);
+    }
+  }
+
+  void Katamari(Cube *player) {
+    int bias = player->body_->wantsSleeping() ? -1 : 1;
+
+    for (auto const c : cubes_) {
+      auto cube = c->body_;
+
+      if (cube->wantsSleeping()) {
+        continue;
       }
 
-      for (auto const c : cubes_) {
+      if (cube == player->body_) {
+        continue;
+      }
 
-        {
-          auto cube = c->body_;
-          ;
-          if (cube->wantsSleeping()) {
-            continue;
-          }
+      btVector3 difference = player->body_->getCenterOfMassPosition() -
+                             cube->getCenterOfMassPosition();
 
-          if (cube == player_->body_) {
-            continue;
-          }
+      btScalar distanceSquared = difference.length2();
+      btScalar distance = difference.length();
 
-          btVector3 difference = player_->body_->getCenterOfMassPosition() -
-                                 cube->getCenterOfMassPosition();
-
-          btScalar distanceSquared = difference.length2();
-          btScalar distance = difference.length();
-
-          if (distance < FLAGS_force_distance) {
-            btVector3 direction = difference / distance * bias;
-            btScalar magnitude = FLAGS_force / distanceSquared;
-            cube->applyCentralForce(direction * magnitude);
-          }
-        }
+      if (distance < FLAGS_force_distance) {
+        btVector3 direction = difference / distance * bias;
+        btScalar magnitude = FLAGS_force / distanceSquared;
+        cube->applyCentralForce(direction * magnitude);
       }
     }
   }
@@ -528,7 +526,7 @@ private:
   btRigidBody *groundRigidBody_;
 
   std::vector<Cube *> cubes_;
-  Cube *player_;
+  std::vector<Cube *> players_;
 };
 
 class GameServer {
@@ -543,21 +541,25 @@ public:
       OnDebugReceive(buf, addr);
     });
 
-    timer_.Start(
-        [&] {
-          OnTick();
-          OnDebugTick();
-        },
-        16);
-
     for (int i = -FLAGS_cubes_count; i < FLAGS_cubes_count; ++i) {
       for (int j = -FLAGS_cubes_count; j < FLAGS_cubes_count; ++j) {
         world_.Add(new Cube(glm::vec3(i * 2, 0.5f, j * 2)));
       }
     }
 
-    world_.Player(
-        new Cube(glm::vec3(0, 15, 0), FLAGS_player_scale, FLAGS_player_mass));
+    timer_.Start(
+        [&] {
+          world_.Update(16.0f / 1000);
+          frame_.clear();
+          world_.Dump(frame_);
+
+          qframe_.clear();
+          world_.Dump(qframe_);
+
+          OnTick();
+          OnDebugTick();
+        },
+        16);
 
     world_.Reset();
   }
@@ -572,32 +574,22 @@ public:
 private:
   Frame &Next(int n) {
     // return Log()[n % Log().size()];
-
-    world_.Update(16.0f / 1000);
-
-    frame_.clear();
-    world_.Dump(frame_);
-
-    qframe_.clear();
-    world_.Dump(qframe_);
-
     return frame_;
   }
 
-  void OnReceive(uv_buf_t request, Addr addr) {
-    clients_.emplace(addr);
+  void ApplyForce(const uv_buf_t &request, const Addr &addr) {
     switch (request.base[0]) {
     case 'w':
-      world_.player_->Force(glm::vec3(0.f, 0.f, -1.f));
+      players_[addr]->Force(glm::vec3(0.f, 0.f, -1.f));
       break;
     case 's':
-      world_.player_->Force(glm::vec3(0.f, 0.f, 1.f));
+      players_[addr]->Force(glm::vec3(0.f, 0.f, 1.f));
       break;
     case 'a':
-      world_.player_->Force(glm::vec3(-1.f, 0.f, 0.f));
+      players_[addr]->Force(glm::vec3(-1.f, 0.f, 0.f));
       break;
     case 'd':
-      world_.player_->Force(glm::vec3(1.f, 0.f, 0.f));
+      players_[addr]->Force(glm::vec3(1.f, 0.f, 0.f));
       break;
     case 'r':
       world_.Reset();
@@ -607,14 +599,40 @@ private:
     }
   }
 
+  void OnReceive(uv_buf_t request, Addr addr) {
+    auto status = clients_.emplace(addr);
+    if (status.second) {
+      // printf("New client\n");
+      NewPlayer(addr);
+    }
+
+    ApplyForce(request, addr);
+  }
+
+  void NewPlayer(Addr addr) {
+    auto player =
+        new Cube(glm::vec3(0, 15, 0), FLAGS_player_scale, FLAGS_player_mass);
+    // world takes ownership of the player cube
+    world_.Player(player);
+    players_[addr] = player;
+  }
+
   void OnTick() {
     Next(seq_);
     seq_++;
 
     if (!(seq_ % 6)) {
+      size_t state_size = qframe_.size() * sizeof(QState);
+      size_t total_size = state_size + sizeof(uint32_t);
+
+      uv_buf_t response;
+      response.base = Alloc(total_size);
+      response.len = state_size;
+
       qframe_[0].interacting = seq_;
-      uv_buf_t response = {(char *)qframe_.data(),
-                           qframe_.size() * sizeof(QState)};
+
+      memcpy(response.base, qframe_.data(), state_size);
+
       for (const auto &client : clients_) {
         server_.Send(client, &response);
       }
@@ -634,11 +652,18 @@ private:
     }
   }
 
-  int seq_;
+  char *Alloc(int size) {
+    static char slab[65536];
+    CHECK(size < 65536);
+    return slab;
+  }
+
+  uint64_t seq_;
   Loop loop_;
   UDPServer server_;
   Timer timer_;
   std::set<Addr> clients_;
+  std::map<Addr, Cube *> players_;
 
   QFrame qframe_;
   Frame frame_;

@@ -748,14 +748,14 @@ private:
           q_.pop_front();
           printf("!");
 
-          // // TODO(dzeromsk): Refactor!
-          // // We sometimes slip a frame on a client in comaprision to
-          // // server so here we compensate... :/
-          // if (q_.size() > 2) {
-          //   Frame &y = q_.front();
-          //   seq_ = y[0].interacting;
-          //   q_.pop_front();
-          // }
+          // TODO(dzeromsk): Refactor!
+          // We sometimes slip a frame on a client in comaprision to
+          // server so here we compensate... :/
+          if (q_.size() > 2) {
+            Frame &y = q_.front();
+            seq_ = y[0].interacting;
+            q_.pop_front();
+          }
         } else {
           printf(".");
         }
