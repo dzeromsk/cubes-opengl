@@ -20,75 +20,29 @@
 
 #pragma once
 
-DEFINE_int32(width, 1280, "Window width");
-DEFINE_int32(height, 800, "Windows height");
-
 class Window {
 public:
-  static Window &Default() {
-    static Window window("TODO", FLAGS_width, FLAGS_height);
-    return window;
-  }
-  ~Window() { glfwTerminate(); }
+  static Window &Default();
 
-  void OnResize(std::function<void(int, int)> resize_callback) {
-    resize_callback_ = std::move(resize_callback);
-  }
+  ~Window();
 
-  void OnKey(std::function<void(int, int)> key_callback) {
-    key_callback_ = std::move(key_callback);
-  }
+  void OnResize(std::function<void(int, int)> resize_callback);
 
-  void Swap() { glfwSwapBuffers(window_); }
-  void Poll() { glfwPollEvents(); }
+  void OnKey(std::function<void(int, int)> key_callback);
 
-  bool ShouldClose(bool close = false) {
-    if (close) {
-      glfwSetWindowShouldClose(window_, GL_TRUE);
-    }
-    return glfwWindowShouldClose(window_);
-  }
+  void Swap();
+  
+  void Poll();
+
+  bool ShouldClose(bool close = false);
 
 private:
-  Window(const char *title, int width, int height)
-      : window_(nullptr), width_(width), height_(height) {
-    CHECK(glfwInit() == GLFW_TRUE);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
-    glfwWindowHint(GLFW_SAMPLES, 4);
-    // glfwSwapInterval(1);
+  Window(const char *title, int width, int height);
 
-    CHECK(window_ = glfwCreateWindow(width_, height_, title, nullptr, nullptr))
-        << "Failed to Create OpenGL Context";
-    glfwMakeContextCurrent(window_);
-    glfwSetWindowUserPointer(window_, this);
-
-    CHECK(gladLoadGL() == GL_TRUE);
-    glViewport(0, 0, width_, height_);
-    glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_MULTISAMPLE);
-
-    resize_callback_ = [](int a, int b) { printf("Not implemented!\n"); };
-    key_callback_ = [](int a, int b) { printf("Not implemented!\n"); };
-
-    glfwSetWindowSizeCallback(window_, Window::ResizeWrapper);
-    glfwSetKeyCallback(window_, Window::KeyWrapper);
-  };
-
-  static void ResizeWrapper(GLFWwindow *window, int width, int height) {
-    ((Window *)glfwGetWindowUserPointer(window))
-        ->resize_callback_(width, height);
-  }
+  static void ResizeWrapper(GLFWwindow *window, int width, int height);
 
   static void KeyWrapper(GLFWwindow *window, int key, int scancode, int action,
-                         int mode) {
-    ((Window *)glfwGetWindowUserPointer(window))->key_callback_(key, action);
-  }
+                         int mode);
 
   GLFWwindow *window_;
   int width_;

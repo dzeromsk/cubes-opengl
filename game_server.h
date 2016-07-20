@@ -20,139 +20,28 @@
 
 #pragma once
 
-
-DEFINE_int32(cubes_count, 15, "Small cube dimension");
-DEFINE_int32(player_scale, 4, "Player cube scale");
-DEFINE_double(player_mass, 1e3f, "Player cube mass");
-
 class GameServer {
 public:
-  GameServer()
-      : server_(loop_), debug_server_(loop_), timer_(loop_), seq_(0),
-        world_(glm::vec3(0, -20, 0)) {
-    server_.OnReceive(
-        [&](const uv_buf_t buf, const Addr addr) { OnReceive(buf, addr); });
+  GameServer();
 
-    debug_server_.OnReceive([&](const uv_buf_t buf, const Addr addr) {
-      OnDebugReceive(buf, addr);
-    });
-
-    for (int i = -FLAGS_cubes_count; i < FLAGS_cubes_count; ++i) {
-      for (int j = -FLAGS_cubes_count; j < FLAGS_cubes_count; ++j) {
-        world_.Add(new Cube(glm::vec3(i * 2, 0.5f, j * 2)));
-      }
-    }
-
-    timer_.Start(
-        [&] {
-          world_.Update(16.0f / 1000);
-          frame_.clear();
-          world_.Dump(frame_);
-
-          qframe_.clear();
-          world_.Dump(qframe_);
-
-          OnTick();
-          OnDebugTick();
-        },
-        16);
-
-    world_.Reset();
-  }
-
-  int ListenAndServe(const char *ip, int port) {
-    debug_server_.Listen(ip, port + 1);
-    // we use the same loop so as an side effect ListenAndServe will start debug
-    // server as well
-    return server_.ListenAndServe(ip, port);
-  }
+  int ListenAndServe(const char *ip, int port);
 
 private:
-  Frame &Next(int n) {
-    // return Log()[n % Log().size()];
-    return frame_;
-  }
+  Frame &Next(int n);
 
-  void ApplyForce(const uv_buf_t &request, const Addr &addr) {
-    switch (request.base[0]) {
-    case 'w':
-      players_[addr]->Force(glm::vec3(0.f, 0.f, -1.f));
-      break;
-    case 's':
-      players_[addr]->Force(glm::vec3(0.f, 0.f, 1.f));
-      break;
-    case 'a':
-      players_[addr]->Force(glm::vec3(-1.f, 0.f, 0.f));
-      break;
-    case 'd':
-      players_[addr]->Force(glm::vec3(1.f, 0.f, 0.f));
-      break;
-    case 'r':
-      world_.Reset();
-      break;
-    default:
-      break;
-    }
-  }
+  void ApplyForce(const uv_buf_t &request, const Addr &addr);
 
-  void OnReceive(uv_buf_t request, Addr addr) {
-    auto status = clients_.emplace(addr);
-    if (status.second) {
-      // printf("New client\n");
-      NewPlayer(addr);
-    }
+  void OnReceive(uv_buf_t request, Addr addr);
 
-    ApplyForce(request, addr);
-  }
+  void NewPlayer(Addr addr);
 
-  void NewPlayer(Addr addr) {
-    auto player =
-        new Cube(glm::vec3(0, 15, 0), FLAGS_player_scale, FLAGS_player_mass);
-    // world takes ownership of the player cube
-    world_.Player(player);
-    players_[addr] = player;
-  }
+  void OnTick();
 
-  void OnTick() {
-    Next(seq_);
-    seq_++;
+  void OnDebugReceive(uv_buf_t request, Addr addr);
 
-    if (!(seq_ % 6)) {
-      size_t state_size = qframe_.size() * sizeof(QState);
-      size_t total_size = state_size + sizeof(uint32_t);
+  void OnDebugTick();
 
-      uv_buf_t response;
-      response.base = Alloc(total_size);
-      response.len = state_size;
-
-      qframe_[0].interacting = seq_;
-
-      memcpy(response.base, qframe_.data(), state_size);
-
-      for (const auto &client : clients_) {
-        server_.Send(client, &response);
-      }
-    }
-  }
-
-  void OnDebugReceive(uv_buf_t request, Addr addr) {
-    debug_clients_.emplace(addr);
-  }
-
-  void OnDebugTick() {
-    Frame &frame = Next(seq_);
-
-    uv_buf_t response = {(char *)frame.data(), frame.size() * sizeof(State)};
-    for (const auto &client : debug_clients_) {
-      debug_server_.Send(client, &response);
-    }
-  }
-
-  char *Alloc(int size) {
-    static char slab[65536];
-    CHECK(size < 65536);
-    return slab;
-  }
+  char *Alloc(int size);
 
   uint64_t seq_;
   Loop loop_;

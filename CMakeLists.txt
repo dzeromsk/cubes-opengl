@@ -58,6 +58,8 @@ target_include_directories (glad PUBLIC
 add_executable (client
   client.cc
   model.cc
+  game_client.cc
+  base/window.cc
 )
 
 target_include_directories (client PUBLIC
@@ -94,6 +96,9 @@ endif (UNIX)
 
 add_executable (server
   server.cc
+  game_server.cc
+  world.cc
+  cube.cc
 )
 
 target_include_directories (server PUBLIC
