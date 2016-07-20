@@ -34,6 +34,11 @@
 #include <string>
 #include <vector>
 
+#include "loop.h"
+#include "timer.h"
+#include "udp.h"
+
+
 inline uint32_t quantize(float x, int max_bits) {
   return x * ((1 << max_bits) - 1) + 0.5;
 }
@@ -113,110 +118,6 @@ static Frames &Log() {
   static Frames log;
   return log;
 }
-
-class Loop {
-  friend class Timer;
-  friend class UDP;
-
-public:
-  Loop() { CHECK(uv_loop_init(&loop_) == 0); }
-  ~Loop() { uv_loop_close(&loop_); }
-
-  int Run() { return uv_run(&loop_, UV_RUN_DEFAULT); }
-  void Stop() { uv_stop(&loop_); }
-
-private:
-  uv_loop_t loop_;
-};
-
-class Timer {
-public:
-  Timer(Loop *loop, std::function<void(Timer *)> callback, uint64_t repeat)
-      : callback_(std::move(callback)) {
-    timer_.data = this;
-    CHECK(uv_timer_init(&loop->loop_, &timer_) == 0);
-    CHECK(uv_timer_start(&timer_, Timer::Wrapper, 1, repeat) == 0);
-  }
-  ~Timer() { uv_timer_stop(&timer_); }
-
-private:
-  static void Wrapper(uv_timer_t *handle) {
-    ((Timer *)handle->data)->callback_((Timer *)handle->data);
-  }
-  std::function<void(Timer *)> callback_;
-
-  uv_timer_t timer_;
-};
-
-typedef struct {
-  uv_udp_send_t req;
-  char *data;
-} udp_send_ctx_t;
-
-#define container_of(ptr, type, member)                                        \
-  ((type *)((char *)(ptr)-offsetof(type, member)))
-
-class UDP {
-public:
-  UDP(Loop &loop) {
-    CHECK(uv_udp_init(&loop.loop_, &socket_) == 0);
-    socket_.data = this;
-  }
-
-  ~UDP() { uv_udp_recv_stop(&socket_); }
-
-  void Listen(const char *ip, int port) {
-    struct sockaddr_in addr;
-    CHECK(uv_ip4_addr(ip, port, &addr) == 0);
-    CHECK(uv_udp_bind(&socket_, (const struct sockaddr *)&addr, 0) == 0);
-    CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
-  }
-
-  void Listen() {
-    CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
-  }
-
-  typedef std::function<void()> CloseFunc;
-  typedef std::function<void(uv_buf_t, const struct sockaddr *, unsigned)>
-      ReceiveFunc;
-
-  void OnReceive(ReceiveFunc on_receive) { receive_ = std::move(on_receive); }
-
-  int Send(const uv_buf_t bufs[], unsigned int nbufs,
-           const struct sockaddr *addr) {
-    udp_send_ctx_t *req = (udp_send_ctx_t *)malloc(sizeof(*req));
-    uv_udp_send(&(req->req), &socket_, bufs, nbufs, addr, UDP::Send);
-  }
-
-private:
-  static void CloseWrapper(uv_handle_t *handle) {
-    ((UDP *)handle->data)->close_();
-  }
-
-  static void ReceiveWrapper(uv_udp_t *handle, ssize_t nread,
-                             const uv_buf_t *buf, const struct sockaddr *addr,
-                             unsigned flags) {
-    if (nread > 0 && addr != nullptr) {
-      uv_buf_t data = {buf->base, size_t(nread)};
-      ((UDP *)handle->data)->receive_(data, addr, flags);
-    }
-  }
-
-  static void Alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-    static char slab[65536];
-    *buf = uv_buf_init(slab, sizeof(slab));
-  }
-
-  static void Send(uv_udp_send_t *req, int status) {
-    udp_send_ctx_t *ctx = container_of(req, udp_send_ctx_t, req);
-    free(ctx);
-  }
-
-  CloseFunc close_;
-  ReceiveFunc receive_;
-
-  uv_udp_t socket_;
-};
 
 class Window {
 public:
@@ -652,8 +553,8 @@ public:
                                 unsigned flags) { OnDebugReceive(buf, addr); });
 
     // TODO(dzeromsk): Send input to server at 30fps
-    Timer input(&loop_, [&](Timer *t) { window_.Poll(); }, 32);
-    Timer render(&loop_, [&](Timer *t) { OnFrame(); }, 16);
+    Timer input(&loop_, [&] { window_.Poll(); }, 32);
+    Timer render(&loop_, [&] { OnFrame(); }, 16);
 
     CHECK(uv_ip4_addr(server_ip, port, &server_addr_) == 0);
 

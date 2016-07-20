@@ -28,8 +28,12 @@
 #include <map>
 #include <set>
 
-#define container_of(ptr, type, member)                                        \
-  ((type *)((char *)(ptr)-offsetof(type, member)))
+#include "loop.h"
+#include "udp.h"
+#include "addr.h"
+#include "udp_server.h"
+#include "timer.h"
+#include "game_server.h"
 
 inline uint32_t quantize(float x, int max_bits) {
   return x * ((1 << max_bits) - 1) + 0.5;
@@ -151,176 +155,6 @@ static void ReadLog(std::string filename) {
   }
   fclose(f);
 }
-
-class Loop {
-  friend class UDP;
-  friend class Timer;
-
-public:
-  Loop() { CHECK(uv_loop_init(&loop_) == 0); }
-  ~Loop() { uv_loop_close(&loop_); }
-
-  int Run() { return uv_run(&loop_, UV_RUN_DEFAULT); }
-  void Stop() { uv_stop(&loop_); }
-
-private:
-  uv_loop_t loop_;
-};
-
-typedef struct {
-  uv_udp_send_t req;
-  char *data;
-} udp_send_ctx_t;
-
-class UDP {
-public:
-  UDP(Loop &loop) {
-    CHECK(uv_udp_init(&loop.loop_, &socket_) == 0);
-    socket_.data = this;
-  }
-
-  ~UDP() { uv_udp_recv_stop(&socket_); }
-
-  void Listen(const char *ip, int port) {
-    struct sockaddr_in addr;
-    CHECK(uv_ip4_addr(ip, port, &addr) == 0);
-    CHECK(uv_udp_bind(&socket_, (const struct sockaddr *)&addr, 0) == 0);
-    CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
-  }
-
-  typedef std::function<void()> CloseFunc;
-  typedef std::function<void(uv_buf_t, const struct sockaddr *, unsigned)>
-      ReceiveFunc;
-
-  void OnReceive(ReceiveFunc on_receive) { receive_ = std::move(on_receive); }
-
-  int Send(const uv_buf_t bufs[], unsigned int nbufs,
-           const struct sockaddr *addr) {
-    udp_send_ctx_t *req = (udp_send_ctx_t *)malloc(sizeof(*req));
-    uv_udp_send(&(req->req), &socket_, bufs, nbufs, addr, UDP::Send);
-  }
-
-private:
-  static void CloseWrapper(uv_handle_t *handle) {
-    ((UDP *)handle->data)->close_();
-  }
-
-  static void ReceiveWrapper(uv_udp_t *handle, ssize_t nread,
-                             const uv_buf_t *buf, const struct sockaddr *addr,
-                             unsigned flags) {
-    if (nread > 0 && addr != nullptr) {
-      uv_buf_t data = {buf->base, size_t(nread)};
-      ((UDP *)handle->data)->receive_(data, addr, flags);
-    }
-  }
-
-  static void Alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-    static char slab[65536];
-    *buf = uv_buf_init(slab, sizeof(slab));
-  }
-
-  static void Send(uv_udp_send_t *req, int status) {
-    udp_send_ctx_t *ctx = container_of(req, udp_send_ctx_t, req);
-    free(ctx);
-  }
-
-  CloseFunc close_;
-  ReceiveFunc receive_;
-
-  uv_udp_t socket_;
-};
-
-struct Addr {
-  uint32_t ip;
-  uint16_t port;
-
-  Addr(const struct sockaddr *addr) {
-    ip = ((struct sockaddr_in *)addr)->sin_addr.s_addr;
-    port = ntohs(((struct sockaddr_in *)addr)->sin_port);
-  }
-
-  bool operator<(const Addr &rhs) const {
-    return ip < rhs.ip || (!(rhs.ip < ip) && port < rhs.port);
-  }
-
-  bool operator!=(const Addr &rhs) const {
-    return ip != rhs.ip || port != rhs.port;
-  }
-
-  void Sock(struct sockaddr_in *addr) const {
-    memset(addr, 0, sizeof(*addr));
-    addr->sin_family = AF_INET;
-    addr->sin_port = htons(port);
-    addr->sin_addr.s_addr = ip;
-  }
-};
-
-class UDPServer {
-public:
-  UDPServer(Loop &loop) : loop_(loop), socket_(loop_) {}
-
-  typedef std::function<void(const uv_buf_t, const Addr)> ReceiveFunc;
-
-  UDPServer(Loop &loop, ReceiveFunc on_receive)
-      : loop_(loop), socket_(loop), on_receive_(std::move(on_receive)) {
-    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
-                          unsigned flags) { on_receive_(buf, addr); });
-  }
-
-  void OnReceive(ReceiveFunc on_receive) {
-    on_receive_ = on_receive;
-    socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
-                          unsigned flags) { on_receive_(buf, addr); });
-  }
-
-  void Listen(const char *ip, int port) { socket_.Listen(ip, port); }
-
-  int ListenAndServe(const char *ip, int port) {
-    socket_.Listen(ip, port);
-    return loop_.Run();
-  }
-
-  int Send(const Addr &client, const uv_buf_t *buf) {
-    struct sockaddr_in addr;
-    client.Sock(&addr);
-    socket_.Send(buf, 1, (struct sockaddr *)&addr);
-  }
-
-protected:
-  Loop &loop_;
-  UDP socket_;
-  ReceiveFunc on_receive_;
-};
-
-class Timer {
-public:
-  Timer(Loop &loop) {
-    timer_.data = this;
-    CHECK(uv_timer_init(&loop.loop_, &timer_) == 0);
-  }
-
-  Timer(Loop *loop, std::function<void(void)> callback, uint64_t repeat)
-      : callback_(std::move(callback)) {
-    timer_.data = this;
-    CHECK(uv_timer_init(&loop->loop_, &timer_) == 0);
-    CHECK(uv_timer_start(&timer_, Timer::Wrapper, 1, repeat) == 0);
-  }
-
-  ~Timer() { uv_timer_stop(&timer_); }
-
-  void Start(std::function<void(void)> callback, uint64_t repeat) {
-    callback_ = std::move(callback);
-    CHECK(uv_timer_start(&timer_, Timer::Wrapper, 1, repeat) == 0);
-  }
-
-private:
-  static void Wrapper(uv_timer_t *handle) {
-    ((Timer *)handle->data)->callback_();
-  }
-  std::function<void(void)> callback_;
-
-  uv_timer_t timer_;
-};
 
 class Cube {
   friend class World;
