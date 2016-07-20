@@ -29,14 +29,14 @@
 #include <map>
 #include <set>
 
-#include "loop.h"
-#include "udp.h"
-#include "addr.h"
-#include "udp_server.h"
-#include "timer.h"
+#include "base/loop.h"
+#include "net/udp.h"
+#include "net/addr.h"
+#include "net/udp_server.h"
+#include "base/timer.h"
 #include "state.h"
-#include "xcube.h"
-#include "xworld.h"
+#include "cube.h"
+#include "world.h"
 #include "game_server.h"
 
 DEFINE_int32(log_cubes_count, 901, "Cubes count per frame");

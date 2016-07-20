@@ -20,53 +20,15 @@
 
 #pragma once
 
-#include <GLFW/glfw3.h>
-#include <btBulletDynamicsCommon.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
-#include <math.h>
-
-#include "cube_model.h"
-
-#define GEMMLOWP_PROFILING
-#include "third_party/profiling/instrumentation.h"
-using gemmlowp::ScopedProfilingLabel;
-
-template <typename type, size_t size = 10> class CircularBuffer {
-public:
-  CircularBuffer() : n_(0) { memset(array_, 0, sizeof(array_)); }
-
-  void append(const type &value) { array_[(n_++ % size)] = value; }
-
-  type &operator[](int offset) { return array_[(n_ + offset) % size]; }
-
-private:
-  type array_[size];
-  size_t n_;
-};
-
-uint32_t quantize(float x, int max_bits) {
-  return x * ((1 << max_bits) - 1) + 0.5;
-}
-
-float dequantize(uint32_t x, int max_bits) {
-  return float(x) / ((1 << max_bits) - 1);
-}
-
-float bound(float x, float min, float max) { return (x - min) / (max - min); }
-
-float unbound(float x, float min, float max) { return x * (max - min) + min; }
-
 DEFINE_int32(max_speed, 18, "Max speed cap");
 DEFINE_double(default_mass, 10, "Default cube mass");
 
 class Cube {
+  friend class World;
+
 public:
-  Cube(glm::vec3 position, CubeModel *model, float scale = 1,
-       float mass = FLAGS_default_mass)
-      : cubeModel_(model), scale_(scale) {
+  Cube(glm::vec3 position, float scale = 1, float mass = FLAGS_default_mass)
+      : scale_(scale) {
     shape_ = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f) * scale_);
     motionState_ = new btDefaultMotionState(
         btTransform(btQuaternion(0, 0, 0, 1),
@@ -87,10 +49,6 @@ public:
     // TODO(dzeromsk): find better api to start object inactive
     if (scale_ == 1) {
       body_->updateDeactivation(10.0f);
-    }
-
-    if (cubeModel_) {
-      cubeModel_->Color(glm::vec3(1.0f, 1.0f, 1.0f));
     }
   }
 
@@ -116,124 +74,13 @@ public:
     }
   }
 
-  btRigidBody *GetBody() { return body_; }
-
-  void Update() {
-    ScopedProfilingLabel label("Cube::Update()");
-    {
-      // move
-      btTransform trans;
-      body_->getMotionState()->getWorldTransform(trans);
-      glm::mat4 model;
-      trans.getOpenGLMatrix(glm::value_ptr(model));
-
-      models_.append(model);
-    }
-
-    {
-      // save position
-      auto transform = body_->getCenterOfMassTransform();
-      auto pos = transform.getOrigin();
-
-      positions_.append(glm::vec3(pos.x(), pos.y(), pos.z()));
-
-      status_.append(body_->wantsSleeping());
-    }
-  }
-
-  void Draw(const glm::mat4 &view, const glm::mat4 &projection) {
-    cubeModel_->Color(glm::vec3(0.3f, 0.2f, 0.2f));
-    Draw(models_[-1], view, projection);
-  }
-
-  void Draw(const int model, const glm::mat4 &view,
-            const glm::mat4 &projection) {
-    // color
-    if (status_[model]) {
-      cubeModel_->Color(glm::vec3(1.0f, 1.0f, 1.0f));
-    } else {
-      cubeModel_->Color(glm::vec3(0.5f, 0.0f, 0.0f));
-    }
-    Draw(models_[model], view, projection);
-  }
-
-  void Draw(const glm::mat4 &model, const glm::mat4 &view,
-            const glm::mat4 &projection) {
-    ScopedProfilingLabel label("Cube::Draw()");
-    // scale
-    glm::mat4 scaled = glm::scale(model, glm::vec3(scale_));
-
-    // draw
-    cubeModel_->Draw(scaled, view, projection);
-  }
-
   void Force(const glm::vec3 &i) {
     body_->activate(true);
-    // body_->applyCentralImpulse(btVector3(i.x, i.y, i.z));
     auto a = body_->getLinearVelocity();
     if (a.length() < FLAGS_max_speed) {
       body_->setLinearVelocity(a + btVector3(i.x, i.y, i.z));
     }
   }
-
-  glm::vec3 Position(int i = -1) { return positions_[i]; }
-
-#pragma pack(push, 1)
-  struct State {
-    float position[3];
-    float orientation[4];
-    uint32_t interacting;
-  };
-
-  struct QuantState {
-    int orientation_largest;
-    int orientation[3];
-    int position[3];
-    int interacting;
-
-    QuantState(const State &s) {
-      position[0] = quantize(bound(s.position[0], -256, 256), 18);
-      position[1] = quantize(bound(s.position[1], -256, 256), 18);
-      position[2] = quantize(bound(s.position[2], -256, 256), 18);
-
-      interacting = !!s.interacting;
-
-      // orientation smallest three method
-
-      // find largest dimension
-      float max = 0.0f;
-      uint8_t maxno = 0;
-      for (int i = 0; i < 4; i++) {
-        float v = fabs(s.orientation[i]);
-        if (v > max) {
-          max = s.orientation[i];
-          maxno = i;
-        }
-      }
-      orientation_largest = maxno;
-
-      // save remaining dimensions
-      glm::vec3 abc(0.0f);
-      for (int i = 0, j = 0; i < 4; i++) {
-        if (i != maxno) {
-          abc[j++] = s.orientation[i];
-        }
-      }
-
-      // remeber to handle sign
-      if (max < 0) {
-        abc *= -1;
-      }
-
-      float minimum = -1.0f / 1.414214f; // 1.0f / sqrt(2)
-      float maximum = +1.0f / 1.414214f;
-
-      for (int i = 0; i < 3; i++) {
-        orientation[i] = quantize(bound(abc[i], minimum, maximum), 9);
-      }
-    }
-  };
-#pragma pack(pop)
 
   void Dump(State *state) {
     const btVector3 &position = body_->getCenterOfMassPosition();
@@ -242,10 +89,10 @@ public:
     state->position[2] = position.getZ();
 
     const btQuaternion orientation = body_->getOrientation();
-    state->orientation[1] = orientation.getX();
-    state->orientation[2] = orientation.getY();
-    state->orientation[3] = orientation.getZ();
-    state->orientation[0] = orientation.getW();
+    state->orientation[0] = orientation.getX();
+    state->orientation[1] = orientation.getY();
+    state->orientation[2] = orientation.getZ();
+    state->orientation[3] = orientation.getW();
 
     state->interacting = !body_->wantsSleeping();
   }
@@ -254,10 +101,6 @@ private:
   btCollisionShape *shape_;
   btDefaultMotionState *motionState_;
   btRigidBody *body_;
-  CubeModel *cubeModel_;
   glm::vec3 initial_position_;
   float scale_;
-  CircularBuffer<glm::mat4, 60> models_;
-  CircularBuffer<glm::vec3, 60> positions_;
-  CircularBuffer<bool, 60> status_;
 };

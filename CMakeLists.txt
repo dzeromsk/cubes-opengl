@@ -55,66 +55,9 @@ target_include_directories (glad PUBLIC
   third_party/glad/include/
 )
 
-add_library (nuklear
-  third_party/nuklear/nuklear.cc
-)
-
-target_include_directories (nuklear PUBLIC
-  third_party/glad/include/
-  third_party/glfw/include/
-)
-
-add_executable (cubes
-  hud.h
-  world.h
-  cube.h
-  cube_model.h
-  cube_model.cc
-  cube_shader.h
-  cube_shader.cc
-  shader_builder.h
-  cubes.cc
-)
-
-target_include_directories (cubes PUBLIC
-  third_party/libuv/libuv/include/
-  third_party/bullet/src/
-  third_party/glad/include/
-  third_party/glfw/include/
-  third_party/gflags/include/
-  third_party/glog/
-  third_party/glm/
-)
-
-target_compile_definitions (cubes PUBLIC
-  -DGLFW_INCLUDE_NONE
-)
-
-target_link_libraries (cubes
-  uv
-  glfw
-  glad
-  glog
-  gflags
-  nuklear
-  BulletDynamics
-  BulletCollision
-  LinearMath
-  ${GLFW_LIBRARIES} 
-)
-
-if (WIN32)
-  target_compile_options (cubes PUBLIC /W4 /fp:strict)
-  target_link_libraries (cubes ws2_32 iphlpapi psapi userenv)
-endif (WIN32)
-
-if (UNIX)
-  target_compile_options (cubes PUBLIC -g -Wextra -std=c++14)
-  target_link_libraries (cubes dl)
-endif (UNIX)
-
 add_executable (client
   client.cc
+  model.cc
 )
 
 target_include_directories (client PUBLIC
@@ -136,7 +79,6 @@ target_link_libraries (client
   glad
   glog
   gflags
-  nuklear
   ${GLFW_LIBRARIES} 
 )
 
@@ -178,30 +120,4 @@ endif (WIN32)
 
 if (UNIX)
   target_compile_options (server PUBLIC -g -Wextra -std=c++14)
-endif (UNIX)
-
-add_executable (testx
-  test.cc
-)
-
-target_include_directories (testx PUBLIC
-  third_party/libuv/libuv/include/
-  third_party/gflags/include/
-  third_party/glog/
-  third_party/glm/
-)
-
-target_link_libraries (testx
-  uv
-  glog
-  gflags
-)
-
-if (WIN32)
-  target_compile_options (testx PUBLIC /W4 /fp:strict)
-  target_link_libraries (testx ws2_32 iphlpapi psapi userenv)
-endif (WIN32)
-
-if (UNIX)
-  target_compile_options (testx PUBLIC -g -Wextra -std=c++14)
 endif (UNIX)

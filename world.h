@@ -20,23 +20,14 @@
 
 #pragma once
 
-#include <GLFW/glfw3.h>
-#include <btBulletDynamicsCommon.h>
-#include <gflags/gflags.h>
-#include <glm/glm.hpp>
-
-#include "cube.h"
-
-#define GEMMLOWP_PROFILING
-#include "third_party/profiling/instrumentation.h"
-using gemmlowp::ScopedProfilingLabel;
-
 DEFINE_double(force, 9e3f, "Attraction force");
 DEFINE_double(force_distance, 4.5f, "Attraction force distance cap");
 
 class World {
+  friend class GameServer;
+
 public:
-  World(glm::vec3 gravity) : player_(nullptr) {
+  World(glm::vec3 gravity) {
     collisionConfiguration_ = new btDefaultCollisionConfiguration();
     dispatcher_ = new btCollisionDispatcher(collisionConfiguration_);
     broadphase_ = new btDbvtBroadphase();
@@ -74,73 +65,48 @@ public:
   }
 
   void Add(Cube *cube) {
-    dynamicsWorld_->addRigidBody(cube->GetBody());
+    dynamicsWorld_->addRigidBody(cube->body_);
     cubes_.push_back(cube);
   }
 
   void Player(Cube *cube) {
+    players_.push_back(cube);
     Add(cube);
-    player_ = cube;
   }
 
-  void Update(GLfloat deltaTime) {
-    ScopedProfilingLabel label("World::Update()");
+  void Update(float deltaTime) {
+    dynamicsWorld_->stepSimulation(deltaTime, 10);
 
-    {
-      ScopedProfilingLabel label("Bullet step simulation");
-      dynamicsWorld_->stepSimulation(deltaTime, 100);
+    for (auto p : players_) {
+      Katamari(p);
     }
+  }
 
-    {
-      auto bigCube = player_->GetBody();
+  void Katamari(Cube *player) {
+    int bias = player->body_->wantsSleeping() ? -1 : 1;
 
-      int bias = 1;
-      if (bigCube->wantsSleeping()) {
-        bias = -1;
+    for (auto const c : cubes_) {
+      auto cube = c->body_;
+
+      if (cube->wantsSleeping()) {
+        continue;
       }
 
-      for (auto const c : cubes_) {
-        c->Update();
-
-        {
-          ScopedProfilingLabel label("Katamari effect");
-          auto cube = c->GetBody();
-          if (cube->wantsSleeping()) {
-            continue;
-          }
-
-          if (cube == bigCube) {
-            continue;
-          }
-
-          btVector3 difference = bigCube->getCenterOfMassPosition() -
-                                 cube->getCenterOfMassPosition();
-
-          btScalar distanceSquared = difference.length2();
-          btScalar distance = difference.length();
-
-          if (distance < FLAGS_force_distance) {
-            btVector3 direction = difference / distance * bias;
-            btScalar magnitude = FLAGS_force / distanceSquared;
-            cube->applyCentralForce(direction * magnitude);
-          }
-        }
+      if (cube == player->body_) {
+        continue;
       }
-    }
-  }
 
-  void Draw(const glm::mat4 &view, const glm::mat4 &projection) {
-    ScopedProfilingLabel label("World::Draw()");
-    for (auto const cube : cubes_) {
-      cube->Draw(view, projection);
-    }
-  }
+      btVector3 difference = player->body_->getCenterOfMassPosition() -
+                             cube->getCenterOfMassPosition();
 
-  void Draw(const int model, const glm::mat4 &view,
-            const glm::mat4 &projection) {
-    ScopedProfilingLabel label("World::Draw(model)");
-    for (auto const cube : cubes_) {
-      cube->Draw(model, view, projection);
+      btScalar distanceSquared = difference.length2();
+      btScalar distance = difference.length();
+
+      if (distance < FLAGS_force_distance) {
+        btVector3 direction = difference / distance * bias;
+        btScalar magnitude = FLAGS_force / distanceSquared;
+        cube->applyCentralForce(direction * magnitude);
+      }
     }
   }
 
@@ -151,19 +117,17 @@ public:
     dynamicsWorld_->clearForces();
   }
 
-  void Dump(std::vector<Cube::State> &state) {
-    ScopedProfilingLabel label("World::Dump()");
+  void Dump(std::vector<State> &state) {
     for (auto const cube : cubes_) {
-      Cube::State s;
+      State s;
       cube->Dump(&s);
       state.emplace_back(s);
     }
   }
 
-  void Dump(std::vector<Cube::QuantState> &state) {
-    ScopedProfilingLabel label("World::Dump()");
+  void Dump(std::vector<QState> &state) {
     for (auto const cube : cubes_) {
-      Cube::State s;
+      State s;
       cube->Dump(&s);
       state.emplace_back(s);
     }
@@ -181,5 +145,5 @@ private:
   btRigidBody *groundRigidBody_;
 
   std::vector<Cube *> cubes_;
-  Cube *player_;
+  std::vector<Cube *> players_;
 };

@@ -35,11 +35,11 @@
 #include <string>
 #include <vector>
 
-#include "loop.h"
-#include "timer.h"
-#include "udp.h"
+#include "base/loop.h"
+#include "base/timer.h"
+#include "net/udp.h"
 #include "state.h"
-#include "window.h"
+#include "base/window.h"
 #include "shader.h"
 #include "program.h"
 #include "model.h"
