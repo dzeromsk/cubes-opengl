@@ -56,6 +56,15 @@ target_include_directories (glad PUBLIC
 )
 
 add_executable (client
+  base/loop.h
+  base/timer.h
+  base/window.h
+  net/udp.h
+  state.h
+  shader.h
+  program.h
+  model.h
+  game_client.h
   client.cc
   model.cc
   game_client.cc
@@ -95,6 +104,15 @@ if (UNIX)
 endif (UNIX)
 
 add_executable (server
+  base/loop.h
+  net/udp.h
+  net/addr.h
+  net/udp_server.h
+  base/timer.h
+  state.h
+  cube.h
+  world.h
+  game_server.h
   server.cc
   game_server.cc
   world.cc
