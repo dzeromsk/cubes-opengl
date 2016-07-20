@@ -25,6 +25,7 @@
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -37,79 +38,8 @@
 #include "loop.h"
 #include "timer.h"
 #include "udp.h"
-
-
-inline uint32_t quantize(float x, int max_bits) {
-  return x * ((1 << max_bits) - 1) + 0.5;
-}
-
-inline float dequantize(uint32_t x, int max_bits) {
-  return float(x) / ((1 << max_bits) - 1);
-}
-
-inline float bound(float x, float min, float max) {
-  return (x - min) / (max - min);
-}
-
-inline float unbound(float x, float min, float max) {
-  return x * (max - min) + min;
-}
-
-#pragma pack(push, 1)
-
-struct QState {
-  int orientation_largest;
-  int orientation[3];
-  int position[3];
-  int interacting;
-};
-
-struct State {
-  glm::vec3 position;
-  glm::quat orientation;
-  uint32_t interacting;
-
-  State() = default;
-  State(const QState &qs);
-};
-
-#pragma pack(pop)
-
-typedef std::vector<State> Frame;
-typedef std::vector<Frame> Frames;
-
-typedef std::vector<QState> QFrame;
-
-State::State(const QState &qs) {
-  position[0] = unbound(dequantize(qs.position[0], 12), -64, 64);
-  position[1] = unbound(dequantize(qs.position[1], 8), -1, 31);
-  position[2] = unbound(dequantize(qs.position[2], 12), -64, 64);
-
-  // interacting = !!qs.interacting;
-  interacting = qs.interacting;
-
-  // smallest three method
-
-  float minimum = -1.0f / 1.414214f; // 1.0f / sqrt(2)
-  float maximum = +1.0f / 1.414214f;
-
-  glm::vec3 abc;
-  for (int i = 0; i < 3; i++) {
-    abc[i] = unbound(dequantize(qs.orientation[i], 7), minimum, maximum);
-  }
-
-  for (int i = 0, j = 0; i < 4; i++) {
-    if (i == qs.orientation_largest) {
-      orientation[i] =
-          sqrtf(1 - abc[0] * abc[0] - abc[1] * abc[1] - abc[2] * abc[2]);
-    } else {
-      orientation[i] = abc[j++];
-    }
-  }
-}
-
-DEFINE_int32(width, 1280, "Window width");
-DEFINE_int32(height, 800, "Windows height");
+#include "state.h"
+#include "window.h"
 
 DEFINE_string(server_addr, "127.0.0.1", "Server ip address");
 DEFINE_int32(server_port, 3389, "Server port");
@@ -118,80 +48,6 @@ static Frames &Log() {
   static Frames log;
   return log;
 }
-
-class Window {
-public:
-  static Window &Default() {
-    static Window window("TODO", FLAGS_width, FLAGS_height);
-    return window;
-  }
-  ~Window() { glfwTerminate(); }
-
-  void OnResize(std::function<void(int, int)> resize_callback) {
-    resize_callback_ = std::move(resize_callback);
-  }
-
-  void OnKey(std::function<void(int, int)> key_callback) {
-    key_callback_ = std::move(key_callback);
-  }
-
-  void Swap() { glfwSwapBuffers(window_); }
-  void Poll() { glfwPollEvents(); }
-
-  bool ShouldClose(bool close = false) {
-    if (close) {
-      glfwSetWindowShouldClose(window_, GL_TRUE);
-    }
-    return glfwWindowShouldClose(window_);
-  }
-
-private:
-  Window(const char *title, int width, int height)
-      : window_(nullptr), width_(width), height_(height) {
-    CHECK(glfwInit() == GLFW_TRUE);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
-    glfwWindowHint(GLFW_SAMPLES, 4);
-    // glfwSwapInterval(1);
-
-    CHECK(window_ = glfwCreateWindow(width_, height_, title, nullptr, nullptr))
-        << "Failed to Create OpenGL Context";
-    glfwMakeContextCurrent(window_);
-    glfwSetWindowUserPointer(window_, this);
-
-    CHECK(gladLoadGL() == GL_TRUE);
-    glViewport(0, 0, width_, height_);
-    glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_MULTISAMPLE);
-
-    resize_callback_ = [](int a, int b) { printf("Not implemented!\n"); };
-    key_callback_ = [](int a, int b) { printf("Not implemented!\n"); };
-
-    glfwSetWindowSizeCallback(window_, Window::ResizeWrapper);
-    glfwSetKeyCallback(window_, Window::KeyWrapper);
-  };
-
-  static void ResizeWrapper(GLFWwindow *window, int width, int height) {
-    ((Window *)glfwGetWindowUserPointer(window))
-        ->resize_callback_(width, height);
-  }
-
-  static void KeyWrapper(GLFWwindow *window, int key, int scancode, int action,
-                         int mode) {
-    ((Window *)glfwGetWindowUserPointer(window))->key_callback_(key, action);
-  }
-
-  GLFWwindow *window_;
-  int width_;
-  int height_;
-  std::function<void(int, int)> resize_callback_;
-  std::function<void(int, int)> key_callback_;
-};
 
 namespace render {
 
