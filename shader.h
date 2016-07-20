@@ -18,46 +18,33 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
-#include <uv.h>
+#pragma once
 
-#include <GLFW/glfw3.h>
-#include <glad/glad.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/quaternion.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#define GLSL(src) "#version 330 core\n" #src
 
-#include <cmath>
-#include <deque>
-#include <functional>
-#include <string>
-#include <vector>
+struct Shader {
+  GLuint shader;
 
-#include "loop.h"
-#include "timer.h"
-#include "udp.h"
-#include "state.h"
-#include "window.h"
-#include "shader.h"
-#include "program.h"
-#include "model.h"
-#include "game_client.h"
+  Shader(const char *source, int type) {
+    shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, NULL);
+    glCompileShader(shader);
+    Verify();
+  }
 
-DEFINE_string(server_addr, "127.0.0.1", "Server ip address");
-DEFINE_int32(server_port, 3389, "Server port");
+  ~Shader() { glDeleteShader(shader); }
 
+  void Verify() {
+    GLint status = 0;
+    GLint logsz = 0;
+    std::string log;
 
-int main(int argc, char *argv[]) {
-  google::InitGoogleLogging(argv[0]);
-  google::ParseCommandLineFlags(&argc, &argv, true);
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logsz);
 
-  Window &window = Window::Default();
-  Model model;
+    log.resize(logsz);
+    glGetShaderInfoLog(shader, logsz, &logsz, (char *)log.data());
 
-  Loop loop;
-  Client client(loop, window, model);
-
-  return client.ConnectAndRun(FLAGS_server_addr.c_str(), FLAGS_server_port);
-}
+    CHECK(status == GL_TRUE) << "Build failed: " << log;
+  }
+};
