@@ -34,7 +34,7 @@ struct Program {
 
     Verify();
   }
-  
+
   ~Program() { glDeleteProgram(program); }
 
   void Verify() {

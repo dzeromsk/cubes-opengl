@@ -45,7 +45,6 @@ DEFINE_string(logfile, "models.log", "Path to log file");
 DEFINE_string(server_addr, "127.0.0.1", "Server ip address");
 DEFINE_int32(server_port, 3389, "Server port");
 
-
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);

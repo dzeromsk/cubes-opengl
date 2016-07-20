@@ -31,7 +31,7 @@ public:
   void OnKey(std::function<void(int, int)> key_callback);
 
   void Swap();
-  
+
   void Poll();
 
   bool ShouldClose(bool close = false);

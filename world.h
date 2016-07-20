@@ -41,7 +41,6 @@ public:
   void Dump(std::vector<QState> &state);
 
 private:
-
   void Katamari(Cube *player);
 
   btDefaultCollisionConfiguration *collisionConfiguration_;
