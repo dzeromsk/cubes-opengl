@@ -25,18 +25,17 @@ struct Model {
 
   GLint view;
   GLint projection;
-  GLint object_color;
   GLint light_color;
   GLint light_position;
 
   // state
   GLint pos;
   GLint orie;
-  GLint flags;
+  GLint interacting;
+  GLint scale;
 
   GLint position;
   GLint normal;
-  GLint alpha;
 
   GLuint VBO[2];
   GLuint VAO;

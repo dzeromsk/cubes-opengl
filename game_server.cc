@@ -42,7 +42,6 @@
 #include "game_server.h"
 
 DEFINE_int32(cubes_count, 15, "Small cube dimension");
-DEFINE_int32(player_scale, 4, "Player cube scale");
 DEFINE_double(player_mass, 1e3f, "Player cube mass");
 
 GameServer::GameServer()
@@ -122,8 +121,7 @@ void GameServer::OnReceive(uv_buf_t request, Addr addr) {
 }
 
 void GameServer::NewPlayer(Addr addr) {
-  auto player =
-      new Cube(glm::vec3(0, 15, 0), FLAGS_player_scale, FLAGS_player_mass);
+  auto player = new Cube(glm::vec3(0, 15, 0), 1, FLAGS_player_mass);
   // world takes ownership of the player cube
   world_.Player(player);
   players_[addr] = player;

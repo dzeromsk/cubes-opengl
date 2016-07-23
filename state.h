@@ -27,7 +27,8 @@ class QState;
 struct State {
   glm::vec3 position;
   glm::quat orientation;
-  bool interacting;
+  uint32_t interacting;
+  uint32_t scale;
 
   State() = default;
   State(const QState &qs);
@@ -42,6 +43,7 @@ struct QState {
   uint32_t position_y : 8;
   uint32_t position_z : 12;
   uint32_t interacting : 1;
+  uint32_t scale : 1;
 
   QState(const State &s);
 };
@@ -79,6 +81,7 @@ inline State::State(const QState &qs) {
   position[2] = unbound(dequantize(qs.position_z, 12), -64, 64);
 
   interacting = !!qs.interacting;
+  scale = !!qs.scale;
 
   // smallest three method
 
@@ -106,6 +109,7 @@ inline QState::QState(const State &s) {
   position_z = quantize(bound(s.position[2], -64, 64), 12);
 
   interacting = !!s.interacting;
+  scale = !!s.scale;
 
   // orientation smallest three method
 

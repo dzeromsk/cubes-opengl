@@ -32,14 +32,14 @@
 DEFINE_int32(max_speed, 18, "Max speed cap");
 DEFINE_double(default_mass, 10, "Default cube mass");
 
-Cube::Cube(glm::vec3 position, float scale, float mass) : scale_(scale) {
-  shape_ = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f) * scale_);
+Cube::Cube(glm::vec3 position, bool scale, float mass) : scale_(scale) {
+  float s = scale_ ? 4.0f : 1.0f;
+  shape_ = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f) * s);
   motionState_ = new btDefaultMotionState(btTransform(
       btQuaternion(0, 0, 0, 1), btVector3(position.x, position.y, position.z)));
 
   initial_position_ = position;
 
-  // btScalar mass = 10 * scale_;
   btVector3 inertia(0, 0, 0);
   shape_->calculateLocalInertia(mass, inertia);
 
@@ -50,7 +50,7 @@ Cube::Cube(glm::vec3 position, float scale, float mass) : scale_(scale) {
   body_ = new btRigidBody(bodyCI);
 
   // TODO(dzeromsk): find better api to start object inactive
-  if (scale_ == 1) {
+  if (!scale_) {
     body_->updateDeactivation(10.0f);
   }
 }
@@ -72,7 +72,7 @@ void Cube::Reset() {
   body_->setAngularVelocity(btVector3(0, 0, 0));
   body_->clearForces();
   body_->activate(true);
-  if (scale_ == 1) {
+  if (!scale_) {
     body_->updateDeactivation(10.0f);
   }
 }
@@ -98,4 +98,5 @@ void Cube::Dump(State *state) {
   state->orientation[3] = orientation.getW();
 
   state->interacting = !body_->wantsSleeping();
+  state->scale = scale_;
 }

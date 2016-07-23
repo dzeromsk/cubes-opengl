@@ -48,6 +48,7 @@ private:
   void OnDebugReceive(uv_buf_t request, const struct sockaddr *addr);
 
   size_t seq_;
+  size_t player_id_;
   Frame frame_;
   Frame x_;
   std::deque<Frame> q_;
@@ -67,5 +68,5 @@ private:
   Frame debug_frame_;
   struct sockaddr_in debug_addr_;
 
-  glm::mat4 view_;
+  glm::vec3 view_;
 };

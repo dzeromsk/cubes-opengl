@@ -41,13 +41,15 @@ const char *kVertexSource = GLSL(
   // state
   in vec3 pos; // instance
   in vec4 orie; // instance
+  in int interacting; // instance
+  in int scale; // instance
 
   out vec3 FragPos;
   out vec3 Normal;
+  out vec3 object_color;
 
   uniform mat4 view;
   uniform mat4 projection;
-  uniform float alpha;
 
   void mat4_from_quat(out mat4 m, in vec4 q) {
     float xx = q.x * q.x;
@@ -85,10 +87,13 @@ const char *kVertexSource = GLSL(
     mat4 model;
     mat4_from_quat(model, orie);
     model[3] = vec4(pos, 1.0f);
-    //gl_Position = projection * view * model * vec4(position, 1.0f);
-    gl_Position = projection * view * model * vec4(position, alpha);
+    if (bool(scale)) {
+      model *= mat4(mat3(4.0f));
+    }
+    gl_Position = projection * view * model * vec4(position, 1.0f);
     FragPos = vec3(model * vec4(position, 1.0f));
     Normal = vec3(model * vec4(normal, 0));
+    object_color = bool(interacting) ? vec3(0.5f, 0.0f, 0.0f) : vec3(1.0f, 1.0f, 1.0f);
   }
 );
 // clang-format on
@@ -97,12 +102,13 @@ const char *kVertexSource = GLSL(
 const char *kFragmentSource = GLSL(
   in vec3 Normal;
   in vec3 FragPos;
+  in vec3 object_color;
 
   out vec4 color;
 
   uniform vec3 light_position;
   uniform vec3 light_color;
-  uniform vec3 object_color;
+  //uniform vec3 object_color;
 
   void main() {
     // Ambient
@@ -192,10 +198,8 @@ void Model::Locations() {
   CHECK(name > -1) << #name;
   GET(view);
   GET(projection);
-  GET(object_color);
   GET(light_color);
   GET(light_position);
-  GET(alpha);
 #undef GET
 #define GET(name)                                                              \
   name = glGetAttribLocation(program.program, #name);                          \
@@ -204,7 +208,8 @@ void Model::Locations() {
   GET(normal)
   GET(pos);
   GET(orie);
-// GET(flags);
+  GET(interacting);
+  GET(scale);
 #undef GET
 }
 
@@ -233,10 +238,16 @@ void Model::Attrib() {
   glEnableVertexAttribArray(orie);
   glVertexAttribDivisor(orie, 1);
 
-  // glVertexAttribPointer(flags, 1, GL_UNSIGNED_INT, GL_FALSE, sizeof(State),
-  //                       (GLvoid *)(sizeof(glm::vec3) + sizeof(glm::vec4)));
-  // glEnableVertexAttribArray(flags);
-  // glVertexAttribDivisor(flags, 1);
+  glVertexAttribPointer(interacting, 1, GL_INT, GL_FALSE, sizeof(State),
+                        (GLvoid *)(sizeof(glm::vec3) + sizeof(glm::vec4)));
+  glEnableVertexAttribArray(interacting);
+  glVertexAttribDivisor(interacting, 1);
+
+  glVertexAttribPointer(
+      scale, 1, GL_INT, GL_FALSE, sizeof(State),
+      (GLvoid *)(sizeof(glm::vec3) + sizeof(glm::vec4) + sizeof(int32_t)));
+  glEnableVertexAttribArray(scale);
+  glVertexAttribDivisor(scale, 1);
 
   glBindVertexArray(0);
 }
@@ -260,11 +271,8 @@ void Model::Draw(const Frame &frame, const glm::mat4 &v, const glm::mat4 &p) {
   glUniformMatrix4fv(view, 1, GL_FALSE, glm::value_ptr(v));
   glUniformMatrix4fv(projection, 1, GL_FALSE, glm::value_ptr(p));
 
-  glUniform3f(object_color, 1.0f, 1.0f, 1.0f);
   glUniform3f(light_color, 1.0f, 1.0f, 1.0f);
   glUniform3f(light_position, 0.f, 25.f, 25.f);
-
-  glUniform1f(alpha, 1.0f);
 
   glBindVertexArray(VAO);
   glDrawArraysInstanced(GL_TRIANGLES, 0, vertices_size / 6, frame_size);

@@ -26,7 +26,7 @@ class Cube {
   friend class World;
 
 public:
-  Cube(glm::vec3 position, float scale = 1, float mass = FLAGS_default_mass);
+  Cube(glm::vec3 position, bool scale = false, float mass = FLAGS_default_mass);
 
   ~Cube();
 
@@ -41,5 +41,5 @@ private:
   btDefaultMotionState *motionState_;
   btRigidBody *body_;
   glm::vec3 initial_position_;
-  float scale_;
+  bool scale_;
 };

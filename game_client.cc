@@ -52,8 +52,7 @@ Client::Client(Loop &loop, Window &window, Model &model)
     : loop_(loop), window_(window), model_(model), socket_(loop),
       debug_socket_(loop), debug_enabled_(false), width_(FLAGS_width),
       height_(FLAGS_height), seq_(0) {
-  view_ = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
-                      glm::vec3(0.0f, 1.0f, 0.0f));
+  view_ = glm::vec3(0.f, 15.f, 25.f);
 }
 
 int Client::ConnectAndRun(const char *server_ip, int port) {
@@ -138,12 +137,10 @@ void Client::OnKey(int key) {
 void Client::OnKeyPress(int key) {
   switch (key) {
   case GLFW_KEY_1:
-    view_ = glm::lookAt(glm::vec3(0.f, 15.f, 25.f), glm::vec3(0, 0, 0),
-                        glm::vec3(0.0f, 1.0f, 0.0f));
+    view_ = glm::vec3(0.f, 15.f, 25.f);
     break;
   case GLFW_KEY_2:
-    view_ = glm::lookAt(glm::vec3(0.f, 50.f, 40.f), glm::vec3(0, 0, 0),
-                        glm::vec3(0.0f, 1.0f, 0.0f));
+    view_ = glm::vec3(0.f, 50.f, 40.f);
     break;
   case GLFW_KEY_F12:
     debug_enabled_ = !debug_enabled_;
@@ -168,6 +165,11 @@ void Client::OnFrame() {
   glm::mat4 projection =
       glm::perspective(45.0f, (GLfloat)width_ / (GLfloat)height_, 1.0f, 100.0f);
 
+  glm::mat4 view;
+  if (frame.size() >= player_id_)
+    view = glm::lookAt(frame[player_id_].position + view_,
+                       frame[player_id_].position, glm::vec3(0.0f, 1.0f, 0.0f));
+
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glClearColor(0.1f, 0.1f, 0.1f, 0.0f);
   glEnable(GL_DEPTH_TEST);
@@ -175,21 +177,10 @@ void Client::OnFrame() {
   glBlendFunc(GL_ONE, GL_SRC_ALPHA);
   glDisable(GL_BLEND);
 
-  // std::vector<glm::mat4> models;
-  // for (const auto &cube : frame) {
-  //   // TODO(dzeromsk): compute model matrix and set color in
-  //   // shader
-
-  //   glm::mat4 translate = glm::translate(glm::mat4(1.0), cube.position);
-  //   glm::mat4 rotate = glm::mat4_cast(cube.orientation);
-
-  //   models.push_back(translate * rotate);
-  // }
-
-  model_.Draw(frame, view_, projection);
+  model_.Draw(frame, view, projection);
 
   if (debug_enabled_) {
-    DrawDebug(view_, projection);
+    DrawDebug(view, projection);
   }
 
   window_.Swap();
@@ -246,7 +237,8 @@ Frame Client::mix(Frame &a, Frame &b, float step) {
     for (size_t i = 0; i < size; ++i) {
       m[i].position = glm::mix(a[i].position, b[i].position, step);
       m[i].orientation = glm::slerp(a[i].orientation, b[i].orientation, step);
-      m[i].interacting = a[i].interacting && b[i].interacting;
+      m[i].interacting = a[i].interacting;
+      m[i].scale = a[i].scale;
     }
 
     return m;
@@ -261,6 +253,7 @@ void Client::OnReceive(uv_buf_t request, const struct sockaddr *addr) {
   static bool first_frame = true;
   if (first_frame) {
     seq_ = p->seq;
+    player_id_ = p->size - 1;
     first_frame = false;
   }
 
