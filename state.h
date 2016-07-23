@@ -34,12 +34,22 @@ struct State {
 };
 
 struct QState {
-  int orientation_largest;
-  int orientation[3];
-  int position[3];
-  int interacting;
+  uint32_t orientation_largest : 2;
+  uint32_t orientation_a : 7;
+  uint32_t orientation_b : 7;
+  uint32_t orientation_c : 7;
+  uint32_t position_x : 12;
+  uint32_t position_y : 8;
+  uint32_t position_z : 12;
+  uint32_t interacting;
 
   QState(const State &s);
+};
+
+struct Packet {
+  uint32_t seq;
+  uint32_t size;
+  uint8_t  data[0];
 };
 #pragma pack(pop)
 
@@ -64,9 +74,9 @@ inline float unbound(float x, float min, float max) {
 }
 
 inline State::State(const QState &qs) {
-  position[0] = unbound(dequantize(qs.position[0], 12), -64, 64);
-  position[1] = unbound(dequantize(qs.position[1], 8), -1, 31);
-  position[2] = unbound(dequantize(qs.position[2], 12), -64, 64);
+  position[0] = unbound(dequantize(qs.position_x, 12), -64, 64);
+  position[1] = unbound(dequantize(qs.position_y, 8), -1, 31);
+  position[2] = unbound(dequantize(qs.position_z, 12), -64, 64);
 
   // interacting = !!qs.interacting;
   interacting = qs.interacting;
@@ -77,11 +87,11 @@ inline State::State(const QState &qs) {
   float maximum = +1.0f / 1.414214f;
 
   glm::vec3 abc;
-  for (int i = 0; i < 3; i++) {
-    abc[i] = unbound(dequantize(qs.orientation[i], 7), minimum, maximum);
-  }
+  abc[0] = unbound(dequantize(qs.orientation_a, 7), minimum, maximum);
+  abc[1] = unbound(dequantize(qs.orientation_b, 7), minimum, maximum);
+  abc[2] = unbound(dequantize(qs.orientation_c, 7), minimum, maximum);
 
-  for (int i = 0, j = 0; i < 4; i++) {
+  for (size_t i = 0, j = 0; i < 4; i++) {
     if (i == qs.orientation_largest) {
       orientation[i] =
           sqrtf(1 - abc[0] * abc[0] - abc[1] * abc[1] - abc[2] * abc[2]);
@@ -92,9 +102,9 @@ inline State::State(const QState &qs) {
 }
 
 inline QState::QState(const State &s) {
-  position[0] = quantize(bound(s.position[0], -64, 64), 12);
-  position[1] = quantize(bound(s.position[1], -1, 31), 8);
-  position[2] = quantize(bound(s.position[2], -64, 64), 12);
+  position_x = quantize(bound(s.position[0], -64, 64), 12);
+  position_y = quantize(bound(s.position[1], -1, 31), 8);
+  position_z = quantize(bound(s.position[2], -64, 64), 12);
 
   // interacting = !!s.interacting;
   interacting = s.interacting;
@@ -104,7 +114,7 @@ inline QState::QState(const State &s) {
   // find largest dimension
   float max = 0.0f;
   uint8_t maxno = 0;
-  for (int i = 0; i < 4; i++) {
+  for (size_t i = 0; i < 4; i++) {
     float v = fabs(s.orientation[i]);
     if (v > max) {
       max = v;
@@ -115,7 +125,7 @@ inline QState::QState(const State &s) {
 
   // save remaining dimensions
   glm::vec3 abc(0.0f);
-  for (int i = 0, j = 0; i < 4; i++) {
+  for (size_t i = 0, j = 0; i < 4; i++) {
     if (i != maxno) {
       abc[j++] = s.orientation[i];
     }
@@ -129,7 +139,7 @@ inline QState::QState(const State &s) {
   float minimum = -1.0f / 1.414214f; // 1.0f / sqrt(2)
   float maximum = +1.0f / 1.414214f;
 
-  for (int i = 0; i < 3; i++) {
-    orientation[i] = quantize(bound(abc[i], minimum, maximum), 7);
-  }
+  orientation_a = quantize(bound(abc[0], minimum, maximum), 7);
+  orientation_b = quantize(bound(abc[1], minimum, maximum), 7);
+  orientation_c = quantize(bound(abc[2], minimum, maximum), 7);
 }
