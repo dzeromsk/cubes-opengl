@@ -144,3 +144,63 @@ endif (WIN32)
 if (UNIX)
   target_compile_options (server PUBLIC -g -Wextra -std=c++14)
 endif (UNIX)
+
+add_executable (demo
+  base/loop.h
+  base/timer.h
+  base/window.cc
+  base/window.h
+  cube.cc
+  cube.h
+  demo.cc
+  game_client.cc
+  game_client.h
+  game_server.cc
+  game_server.h
+  model.cc
+  model.h
+  net/addr.h
+  net/udp.h
+  net/udp_server.h
+  program.h
+  shader.h
+  state.h
+  world.cc
+  world.h
+
+)
+
+target_compile_definitions (demo PUBLIC
+  -DGLFW_INCLUDE_NONE
+)
+
+target_include_directories (demo PUBLIC
+  third_party/bullet/src/
+  third_party/gflags/include/
+  third_party/glad/include/
+  third_party/glfw/include/
+  third_party/glm/
+  third_party/glog/
+  third_party/libuv/libuv/include/
+)
+
+target_link_libraries (demo
+  BulletDynamics
+  BulletCollision
+  LinearMath
+  gflags
+  glad
+  glfw
+  ${GLFW_LIBRARIES}
+  glog
+  uv
+)
+
+if (WIN32)
+  target_compile_options (demo PUBLIC /W4 /fp:strict)
+  target_link_libraries (demo ws2_32 iphlpapi psapi userenv)
+endif (WIN32)
+
+if (UNIX)
+  target_compile_options (demo PUBLIC -g -Wextra -std=c++14)
+endif (UNIX)

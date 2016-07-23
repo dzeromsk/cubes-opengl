@@ -70,8 +70,18 @@ int Client::ConnectAndRun(const char *server_ip, int port) {
     OnKey(key);
   });
 
+  socket_.OnAlloc([&](size_t suggested_size, uv_buf_t *buf) {
+    static char slab[65536];
+    *buf = uv_buf_init(slab, sizeof(slab));
+  });
+
   socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
                         unsigned flags) { OnReceive(buf, addr); });
+
+  debug_socket_.OnAlloc([&](size_t suggested_size, uv_buf_t *buf) {
+    static char slab[65536];
+    *buf = uv_buf_init(slab, sizeof(slab));
+  });
 
   debug_socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
                               unsigned flags) { OnDebugReceive(buf, addr); });

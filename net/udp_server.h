@@ -22,7 +22,12 @@
 
 class UDPServer {
 public:
-  UDPServer(Loop &loop) : loop_(loop), socket_(loop_) {}
+  UDPServer(Loop &loop) : loop_(loop), socket_(loop_) {
+    socket_.OnAlloc([&](size_t suggested_size, uv_buf_t *buf) {
+      static char slab[65536];
+      *buf = uv_buf_init(slab, sizeof(slab));
+    });
+  }
 
   typedef std::function<void(const uv_buf_t, const Addr)> ReceiveFunc;
 
@@ -30,6 +35,10 @@ public:
       : loop_(loop), socket_(loop), on_receive_(std::move(on_receive)) {
     socket_.OnReceive([&](uv_buf_t buf, const struct sockaddr *addr,
                           unsigned flags) { on_receive_(buf, addr); });
+    socket_.OnAlloc([&](size_t suggested_size, uv_buf_t *buf) {
+      static char slab[65536];
+      *buf = uv_buf_init(slab, sizeof(slab));
+    });
   }
 
   void OnReceive(ReceiveFunc on_receive) {

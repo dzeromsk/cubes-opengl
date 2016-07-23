@@ -60,6 +60,10 @@ GameServer::GameServer()
     }
   }
 
+  world_.Reset();
+}
+
+int GameServer::ListenAndServe(const char *ip, int port) {
   timer_.Start(
       [&] {
         world_.Update(16.0f / 1000);
@@ -74,10 +78,6 @@ GameServer::GameServer()
       },
       16);
 
-  world_.Reset();
-}
-
-int GameServer::ListenAndServe(const char *ip, int port) {
   debug_server_.Listen(ip, port + 1);
   // we use the same loop so as an side effect ListenAndServe will start debug
   // server as well

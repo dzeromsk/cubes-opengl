@@ -41,18 +41,23 @@ public:
     struct sockaddr_in addr;
     CHECK(uv_ip4_addr(ip, port, &addr) == 0);
     CHECK(uv_udp_bind(&socket_, (const struct sockaddr *)&addr, 0) == 0);
-    CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
+    CHECK(uv_udp_recv_start(&socket_, UDP::AllocWrapper, UDP::ReceiveWrapper) ==
+          0);
   }
 
   void Listen() {
-    CHECK(uv_udp_recv_start(&socket_, UDP::Alloc, UDP::ReceiveWrapper) == 0);
+    CHECK(uv_udp_recv_start(&socket_, UDP::AllocWrapper, UDP::ReceiveWrapper) ==
+          0);
   }
 
   typedef std::function<void()> CloseFunc;
+  typedef std::function<void(size_t, uv_buf_t *)> AllocFunc;
   typedef std::function<void(uv_buf_t, const struct sockaddr *, unsigned)>
       ReceiveFunc;
 
   void OnReceive(ReceiveFunc on_receive) { receive_ = std::move(on_receive); }
+
+  void OnAlloc(AllocFunc on_alloc) { alloc_ = std::move(on_alloc); }
 
   int Send(const uv_buf_t bufs[], unsigned int nbufs,
            const struct sockaddr *addr) {
@@ -73,9 +78,15 @@ private:
       ((UDP *)handle->data)->receive_(data, addr, flags);
     }
   }
+
   static void Alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
     static char slab[65536];
     *buf = uv_buf_init(slab, sizeof(slab));
+  }
+
+  static void AllocWrapper(uv_handle_t *handle, size_t suggested_size,
+                           uv_buf_t *buf) {
+    ((UDP *)handle->data)->alloc_(suggested_size, buf);
   }
 
   static void Send(uv_udp_send_t *req, int status) {
@@ -84,6 +95,7 @@ private:
   }
 
   CloseFunc close_;
+  AllocFunc alloc_;
   ReceiveFunc receive_;
 
   uv_udp_t socket_;
