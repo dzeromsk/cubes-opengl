@@ -27,7 +27,7 @@ class QState;
 struct State {
   glm::vec3 position;
   glm::quat orientation;
-  uint32_t interacting;
+  bool interacting;
 
   State() = default;
   State(const QState &qs);
@@ -41,7 +41,7 @@ struct QState {
   uint32_t position_x : 12;
   uint32_t position_y : 8;
   uint32_t position_z : 12;
-  uint32_t interacting;
+  uint32_t interacting : 1;
 
   QState(const State &s);
 };
@@ -49,7 +49,7 @@ struct QState {
 struct Packet {
   uint32_t seq;
   uint32_t size;
-  uint8_t  data[0];
+  uint8_t data[0];
 };
 #pragma pack(pop)
 
@@ -78,8 +78,7 @@ inline State::State(const QState &qs) {
   position[1] = unbound(dequantize(qs.position_y, 8), -1, 31);
   position[2] = unbound(dequantize(qs.position_z, 12), -64, 64);
 
-  // interacting = !!qs.interacting;
-  interacting = qs.interacting;
+  interacting = !!qs.interacting;
 
   // smallest three method
 
@@ -106,8 +105,7 @@ inline QState::QState(const State &s) {
   position_y = quantize(bound(s.position[1], -1, 31), 8);
   position_z = quantize(bound(s.position[2], -64, 64), 12);
 
-  // interacting = !!s.interacting;
-  interacting = s.interacting;
+  interacting = !!s.interacting;
 
   // orientation smallest three method
 

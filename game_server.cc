@@ -135,15 +135,14 @@ void GameServer::OnTick() {
 
   if (!(seq_ % 6)) {
     size_t state_size = qframe_.size() * sizeof(QState);
-    size_t total_size = state_size + sizeof(uint32_t);
+    size_t total_size = sizeof(Packet) + state_size;
 
-    uv_buf_t response;
-    response.base = Alloc(total_size);
-    response.len = state_size;
+    Packet *p = (Packet *)Alloc(total_size);
+    p->seq = seq_;
+    p->size = qframe_.size();
+    memcpy(p->data, qframe_.data(), state_size);
 
-    qframe_[0].interacting = seq_;
-
-    memcpy(response.base, qframe_.data(), state_size);
+    uv_buf_t response = {(char *)p, total_size};
 
     for (const auto &client : clients_) {
       server_.Send(client, &response);

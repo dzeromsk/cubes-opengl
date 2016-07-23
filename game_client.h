@@ -51,6 +51,7 @@ private:
   Frame frame_;
   Frame x_;
   std::deque<Frame> q_;
+  std::deque<uint32_t> s_;
 
   int width_;
   int height_;

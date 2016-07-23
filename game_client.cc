@@ -207,11 +207,13 @@ Frame &Client::Next() {
 
     if (q_.size() > 0) {
       Frame y = q_.front();
-      float a = 1 - ((y[0].interacting - seq_) / 6.0f);
+      uint32_t y_seq = s_.front();
+      float a = 1 - ((y_seq - seq_) / 6.0f);
       frame_ = mix(x_, y, a);
-      if (q_.size() > 0 && seq_ >= y[0].interacting) {
+      if (q_.size() > 0 && seq_ >= y_seq) {
         x_ = y;
         q_.pop_front();
+        s_.pop_front();
         printf("!");
 
         // TODO(dzeromsk): Refactor!
@@ -219,8 +221,9 @@ Frame &Client::Next() {
         // server so here we compensate... :/
         if (q_.size() > 2) {
           Frame &y = q_.front();
-          seq_ = y[0].interacting;
+          seq_ = y_seq;
           q_.pop_front();
+          s_.pop_front();
         }
       } else {
         printf(".");
@@ -253,14 +256,20 @@ Frame Client::mix(Frame &a, Frame &b, float step) {
 }
 
 void Client::OnReceive(uv_buf_t request, const struct sockaddr *addr) {
+  Packet *p = (Packet *)request.base;
+
   static bool first_frame = true;
   if (first_frame) {
-    seq_ = ((QState *)request.base)->interacting;
+    seq_ = p->seq;
     first_frame = false;
   }
 
-  q_.emplace_back((QState *)request.base,
-                  (QState *)(request.base + request.len));
+  s_.emplace_back(p->seq);
+
+  size_t q_size = p->size * sizeof(QState);
+  CHECK(q_size < request.len);
+
+  q_.emplace_back((QState *)p->data, (QState *)(p->data + q_size));
 }
 
 void Client::DrawDebug(const glm::mat4 &view, const glm::mat4 &projection) {
