@@ -79,8 +79,8 @@ Window::Window(const char *title, int width, int height)
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_MULTISAMPLE);
 
-  resize_callback_ = [](int a, int b) { printf("Not implemented!\n"); };
-  key_callback_ = [](int a, int b) { printf("Not implemented!\n"); };
+  resize_callback_ = [](int a, int b) {};
+  key_callback_ = [](int a, int b) {};
 
   glfwSetWindowSizeCallback(window_, Window::ResizeWrapper);
   glfwSetKeyCallback(window_, Window::KeyWrapper);

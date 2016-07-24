@@ -167,7 +167,8 @@ add_executable (demo
   state.h
   world.cc
   world.h
-
+  menu.h
+  menu.cc
 )
 
 target_compile_definitions (demo PUBLIC

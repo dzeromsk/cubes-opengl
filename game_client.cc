@@ -86,7 +86,14 @@ int Client::ConnectAndRun(const char *server_ip, int port) {
                               unsigned flags) { OnDebugReceive(buf, addr); });
 
   // TODO(dzeromsk): Send input to server at 30fps
-  Timer input(&loop_, [&] { window_.Poll(); }, 32);
+  Timer input(&loop_,
+              [&] {
+                window_.Poll();
+                if (window_.ShouldClose()) {
+                  loop_.Stop();
+                }
+              },
+              32);
   Timer render(&loop_, [&] { OnFrame(); }, 16);
 
   CHECK(uv_ip4_addr(server_ip, port, &server_addr_) == 0);

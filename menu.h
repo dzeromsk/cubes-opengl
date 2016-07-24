@@ -20,34 +20,28 @@
 
 #pragma once
 
-class Window {
+struct nk_context;
+
+class Menu {
 public:
-  static Window &Default();
+  static Menu &Default();
 
-  ~Window();
+  ~Menu();
 
-  void OnResize(std::function<void(int, int)> resize_callback);
-
-  void OnKey(std::function<void(int, int)> key_callback);
-
-  void Swap();
-
-  void Poll();
-
-  bool ShouldClose(bool close = false);
-
-  GLFWwindow *window_;
+  int Run();
 
 private:
-  Window(const char *title, int width, int height);
+  Menu(Window &window);
 
-  static void ResizeWrapper(GLFWwindow *window, int width, int height);
+  int Draw(int width = 280, int height = 210);
 
-  static void KeyWrapper(GLFWwindow *window, int key, int scancode, int action,
-                         int mode);
+  void Render();
 
-  int width_;
-  int height_;
-  std::function<void(int, int)> resize_callback_;
-  std::function<void(int, int)> key_callback_;
+  Window &window_;
+  Loop loop_;
+  Timer timer_;
+  int window_width_;
+  int window_height_;
+  struct nk_context *ctx_;
+  int status_;
 };

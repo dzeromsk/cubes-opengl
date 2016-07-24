@@ -54,6 +54,7 @@
 #include "program.h"
 #include "model.h"
 #include "game_client.h"
+#include "menu.h"
 
 DEFINE_string(server_addr, "127.0.0.1", "Server ip address");
 DEFINE_int32(server_port, 3389, "Server port");
@@ -62,10 +63,17 @@ int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
+  Menu &menu = Menu::Default();
+
+  int status = menu.Run();
+
   GameServer server;
-  std::thread server_thread([&]() {
-    server.ListenAndServe(FLAGS_server_addr.c_str(), FLAGS_server_port);
-  });
+  std::thread server_thread;
+  if (status == 2) {
+    server_thread = std::thread([&]() {
+      server.ListenAndServe(FLAGS_server_addr.c_str(), FLAGS_server_port);
+    });
+  }
 
   Loop loop;
   Window &window = Window::Default();
