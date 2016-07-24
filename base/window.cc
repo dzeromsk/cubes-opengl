@@ -32,7 +32,7 @@ DEFINE_int32(width, 1280, "Window width");
 DEFINE_int32(height, 800, "Windows height");
 
 Window &Window::Default() {
-  static Window window("TODO", FLAGS_width, FLAGS_height);
+  static Window window("Demo", FLAGS_width, FLAGS_height);
   return window;
 }
 
@@ -48,6 +48,23 @@ void Window::OnKey(std::function<void(int, int)> key_callback) {
 
 void Window::Swap() { glfwSwapBuffers(window_); }
 void Window::Poll() { glfwPollEvents(); }
+
+void Window::ToggleFullscreen() {
+  static bool fullscreen = false;
+  static int w = 0, h = 0;
+  if (fullscreen) {
+    glfwSetWindowMonitor(window_, nullptr, 0, 0, w, h, GLFW_DONT_CARE);
+    fullscreen = false;
+  } else {
+    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+    glfwSetWindowMonitor(window_, monitor, 0, 0, mode->width, mode->height,
+                         mode->refreshRate);
+    fullscreen = true;
+    w = width_;
+    h = height_;
+  }
+}
 
 bool Window::ShouldClose(bool close) {
   if (close) {

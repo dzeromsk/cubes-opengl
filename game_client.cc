@@ -149,6 +149,9 @@ void Client::OnKeyPress(int key) {
   case GLFW_KEY_2:
     view_ = glm::vec3(0.f, 50.f, 40.f);
     break;
+  case GLFW_KEY_F11:
+    window_.ToggleFullscreen();
+  break;
   case GLFW_KEY_F12:
     debug_enabled_ = !debug_enabled_;
     {

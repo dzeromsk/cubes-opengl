@@ -34,6 +34,8 @@ public:
 
   void Poll();
 
+  void ToggleFullscreen();
+
   bool ShouldClose(bool close = false);
 
   GLFWwindow *window_;

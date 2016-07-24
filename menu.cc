@@ -55,6 +55,12 @@ Menu &Menu::Default() {
 Menu::~Menu() { nk_glfw3_shutdown(); }
 
 int Menu::Run() {
+  window_.OnKey([&](int key, int action) {
+    if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
+      window_.ToggleFullscreen();
+    }
+  });
+
   timer_.Start(
       [&] {
         glClear(GL_COLOR_BUFFER_BIT);
@@ -67,7 +73,9 @@ int Menu::Run() {
         window_.Swap();
       },
       32);
+
   loop_.Run();
+
   return status_;
 }
 
