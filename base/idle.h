@@ -18,46 +18,28 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include <gflags/gflags.h>
-#include <glog/logging.h>
-#include <uv.h>
+#pragma once
 
-#include <GLFW/glfw3.h>
-#include <glad/glad.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/quaternion.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+class Idle {
+public:
+  Idle(Loop &loop) { CHECK(uv_idle_init(&loop.loop_, &idle_) == 0); }
 
-#include <cmath>
-#include <deque>
-#include <functional>
-#include <string>
-#include <vector>
+  ~Idle() {
+    uv_idle_stop(&idle_);
+    uv_close((uv_handle_t *)&idle_, nullptr);
+  }
 
-#include "base/loop.h"
-#include "base/idle.h"
-#include "base/timer.h"
-#include "net/udp.h"
-#include "state.h"
-#include "base/window.h"
-#include "shader.h"
-#include "program.h"
-#include "model.h"
-#include "game_client.h"
+  void SetCallback(std::function<void(void)> callback) {
+    callback_ = std::move(callback);
+    idle_.data = this;
+    CHECK(uv_idle_start(&idle_, Wrapper) == 0);
+  }
 
-DEFINE_string(server_addr, "127.0.0.1", "Server ip address");
-DEFINE_int32(server_port, 3389, "Server port");
+private:
+  static void Wrapper(uv_idle_t *handle) {
+    ((Idle *)handle->data)->callback_();
+  }
 
-int main(int argc, char *argv[]) {
-  google::InitGoogleLogging(argv[0]);
-  google::ParseCommandLineFlags(&argc, &argv, true);
-
-  Window &window = Window::Default();
-  Model model;
-
-  Loop loop;
-  Client client(loop, window, model);
-
-  return client.ConnectAndRun(FLAGS_server_addr.c_str(), FLAGS_server_port);
-}
+  uv_idle_t idle_;
+  std::function<void(void)> callback_;
+};

@@ -60,5 +60,13 @@ private:
   AllocFunc alloc_;
   ReceiveFunc receive_;
 
+#ifdef WIN32
+  SOCKET socket_;
+  Idle idle_;
+#endif
+
+#ifdef __linux__
   uv_udp_t socket_;
+#endif
+
 };

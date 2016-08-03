@@ -32,6 +32,7 @@
 #include <deque>
 
 #include "base/loop.h"
+#include "base/idle.h"
 #include "base/timer.h"
 #include "base/window.h"
 #include "net/udp.h"

@@ -31,6 +31,7 @@
 #include <set>
 
 #include "base/loop.h"
+#include "base/idle.h"
 #include "base/timer.h"
 #include "net/addr.h"
 #include "net/udp.h"

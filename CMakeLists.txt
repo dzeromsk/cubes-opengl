@@ -55,12 +55,11 @@ target_include_directories (glad PUBLIC
   third_party/glad/include/
 )
 
-add_executable (client
+set (CLIENT_SRC
   base/loop.h
   base/timer.h
   base/window.h
   net/udp.h
-  net/udp.cc
   state.h
   shader.h
   program.h
@@ -70,6 +69,22 @@ add_executable (client
   model.cc
   game_client.cc
   base/window.cc
+)
+
+if (WIN32)
+  list (APPEND CLIENT_SRC
+    net/udp_win.cc
+  )
+endif (WIN32)
+
+if (UNIX)
+  list (APPEND CLIENT_SRC
+    net/udp_linux.cc
+  )
+endif (UNIX)
+
+add_executable (client
+  ${CLIENT_SRC}
 )
 
 target_include_directories (client PUBLIC
@@ -105,13 +120,12 @@ if (UNIX)
   target_link_libraries (client dl)
 endif (UNIX)
 
-add_executable (server
+set (SERVER_SRC
   base/loop.h
   net/udp.h
   net/addr.h
   net/udp_server.h
   net/udp.h
-  net/udp.cc
   base/timer.h
   state.h
   cube.h
@@ -121,6 +135,22 @@ add_executable (server
   game_server.cc
   world.cc
   cube.cc
+)
+
+if (WIN32)
+  list (APPEND SERVER_SRC
+    net/udp_win.cc
+  )
+endif (WIN32)
+
+if (UNIX)
+  list (APPEND SERVER_SRC
+    net/udp_linux.cc
+  )
+endif (UNIX)
+
+add_executable (server
+  ${SERVER_SRC}
 )
 
 target_include_directories (server PUBLIC
@@ -150,7 +180,7 @@ if (UNIX)
   target_compile_options (server PUBLIC -g -Wextra -std=c++14)
 endif (UNIX)
 
-add_executable (demo
+set (DEMO_SRC
   base/loop.h
   base/timer.h
   base/window.cc
@@ -166,7 +196,6 @@ add_executable (demo
   model.h
   net/addr.h
   net/udp.h
-  net/udp.cc
   net/udp_server.h
   program.h
   shader.h
@@ -175,6 +204,22 @@ add_executable (demo
   world.h
   menu.h
   menu.cc
+)
+
+if (WIN32)
+  list (APPEND DEMO_SRC
+    net/udp_win.cc
+  )
+endif (WIN32)
+
+if (UNIX)
+  list (APPEND DEMO_SRC
+    net/udp_linux.cc
+  )
+endif (UNIX)
+
+add_executable (demo
+  ${DEMO_SRC}
 )
 
 target_compile_definitions (demo PUBLIC
@@ -211,30 +256,4 @@ endif (WIN32)
 
 if (UNIX)
   target_compile_options (demo PUBLIC -g -Wextra -std=c++14)
-endif (UNIX)
-
-add_executable (udp_test
-  udp_test.cc
-)
-
-target_include_directories (udp_test PUBLIC
-  third_party/gflags/include/
-  third_party/glog/
-  third_party/libuv/libuv/include/
-  ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-target_link_libraries (udp_test
-  gflags
-  glog
-  uv
-)
-
-if (WIN32)
-  target_compile_options (udp_test PUBLIC /W4 /fp:strict)
-  target_link_libraries (udp_test ws2_32 iphlpapi psapi userenv)
-endif (WIN32)
-
-if (UNIX)
-  target_compile_options (udp_test PUBLIC -g -Wextra -std=c++14)
 endif (UNIX)

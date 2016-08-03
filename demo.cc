@@ -41,6 +41,7 @@
 #include <vector>
 
 #include "base/loop.h"
+#include "base/idle.h"
 #include "net/udp.h"
 #include "net/addr.h"
 #include "net/udp_server.h"
