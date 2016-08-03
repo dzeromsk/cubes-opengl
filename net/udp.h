@@ -62,7 +62,7 @@ public:
   int Send(const uv_buf_t bufs[], unsigned int nbufs,
            const struct sockaddr *addr) {
     udp_send_ctx_t *req = (udp_send_ctx_t *)malloc(sizeof(*req));
-    uv_udp_send(&(req->req), &socket_, bufs, nbufs, addr, UDP::Send);
+    return uv_udp_send(&(req->req), &socket_, bufs, nbufs, addr, UDP::Send);
   }
 
 private:
@@ -74,7 +74,9 @@ private:
                              const uv_buf_t *buf, const struct sockaddr *addr,
                              unsigned flags) {
     if (nread > 0 && addr != nullptr) {
-      uv_buf_t data = {buf->base, size_t(nread)};
+      uv_buf_t data = { 0 };
+	  data.base = buf->base;
+      data.len = size_t(nread);
       ((UDP *)handle->data)->receive_(data, addr, flags);
     }
   }

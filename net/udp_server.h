@@ -57,7 +57,7 @@ public:
   int Send(const Addr &client, const uv_buf_t *buf) {
     struct sockaddr_in addr;
     client.Sock(&addr);
-    socket_.Send(buf, 1, (struct sockaddr *)&addr);
+    return socket_.Send(buf, 1, (struct sockaddr *)&addr);
   }
 
 protected:

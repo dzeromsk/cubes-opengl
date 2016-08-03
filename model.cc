@@ -86,10 +86,10 @@ const char *kVertexSource = GLSL(
   void main() {
     mat4 model;
     mat4_from_quat(model, orie);
-    model[3] = vec4(pos, 1.0f);
     if (bool(scale)) {
-      model *= mat4(mat3(4.0f));
-    }
+		model *= mat4(mat3(4.0f));
+	}
+	model[3] = vec4(pos, 1.0f);
     gl_Position = projection * view * model * vec4(position, 1.0f);
     FragPos = vec3(model * vec4(position, 1.0f));
     Normal = vec3(model * vec4(normal, 0));
@@ -195,7 +195,7 @@ Model::~Model() {
 void Model::Locations() {
 #define GET(name)                                                              \
   name = glGetUniformLocation(program.program, #name);                         \
-  CHECK(name > -1) << #name;
+  //CHECK(name > -1) << #name;
   GET(view);
   GET(projection);
   GET(light_color);
@@ -203,7 +203,7 @@ void Model::Locations() {
 #undef GET
 #define GET(name)                                                              \
   name = glGetAttribLocation(program.program, #name);                          \
-  CHECK(name > -1) << #name;
+  //CHECK(name > -1) << #name;
   GET(position)
   GET(normal)
   GET(pos);

@@ -51,7 +51,7 @@ DECLARE_int32(height);
 Client::Client(Loop &loop, Window &window, Model &model)
     : loop_(loop), window_(window), model_(model), socket_(loop),
       debug_socket_(loop), debug_enabled_(false), width_(FLAGS_width),
-      height_(FLAGS_height), seq_(0) {
+      height_(FLAGS_height), seq_(0), player_id_(1) {
   view_ = glm::vec3(0.f, 15.f, 25.f);
 }
 
@@ -105,12 +105,16 @@ int Client::ConnectAndRun(const char *server_ip, int port) {
 
 void Client::Connect(UDP &socket, const struct sockaddr_in &addr) {
   socket.Listen();
-  uv_buf_t buf = {(char *)"HELO", 4};
+  uv_buf_t buf = { 0 };
+  buf.base = (char *)"HELO";
+  buf.len = 4;
   socket.Send(&buf, 1, (const sockaddr *)&addr);
 }
 
 void Client::Send(const char *command) {
-  uv_buf_t buf = {(char *)command, strlen(command)};
+  uv_buf_t buf = { 0 };
+  buf.base = (char*)command;
+  buf.len = strlen(command);
   socket_.Send(&buf, 1, (const sockaddr *)&server_addr_);
 }
 
@@ -175,7 +179,7 @@ void Client::OnFrame() {
   glm::mat4 projection =
       glm::perspective(45.0f, (GLfloat)width_ / (GLfloat)height_, 1.0f, 100.0f);
 
-  glm::mat4 view;
+  glm::mat4 view = glm::lookAt(view_, glm::vec3(0), glm::vec3(0.0f, 1.0f, 0.0f));
   if (frame.size() >= player_id_)
     view = glm::lookAt(frame[player_id_].position + view_,
                        frame[player_id_].position, glm::vec3(0.0f, 1.0f, 0.0f));
