@@ -23,6 +23,7 @@
 class Loop {
   friend class UDP;
   friend class Timer;
+  friend class Idle;
 
 public:
   Loop() { CHECK(uv_loop_init(&loop_) == 0); }

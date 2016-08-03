@@ -205,3 +205,28 @@ endif (WIN32)
 if (UNIX)
   target_compile_options (demo PUBLIC -g -Wextra -std=c++14)
 endif (UNIX)
+
+add_executable (udp_test
+  udp_test.cc
+)
+
+target_include_directories (udp_test PUBLIC
+  third_party/gflags/include/
+  third_party/glog/
+  third_party/libuv/libuv/include/
+)
+
+target_link_libraries (udp_test
+  gflags
+  glog
+  uv
+)
+
+if (WIN32)
+  target_compile_options (udp_test PUBLIC /W4 /fp:strict)
+  target_link_libraries (udp_test ws2_32 iphlpapi psapi userenv)
+endif (WIN32)
+
+if (UNIX)
+  target_compile_options (udp_test PUBLIC -g -Wextra -std=c++14)
+endif (UNIX)
