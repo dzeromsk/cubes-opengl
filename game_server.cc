@@ -141,9 +141,9 @@ void GameServer::OnTick() {
     p->size = qframe_.size();
     memcpy(p->data, qframe_.data(), state_size);
 
-    uv_buf_t response = { 0 };
-	response.base = (char *)p;
-	response.len = total_size;
+    uv_buf_t response;
+    response.base = (char *)p;
+    response.len = total_size;
 
     for (const auto &client : clients_) {
       server_.Send(client, &response);
@@ -158,8 +158,8 @@ void GameServer::OnDebugReceive(uv_buf_t request, Addr addr) {
 void GameServer::OnDebugTick() {
   Frame &frame = Next(seq_);
 
-  uv_buf_t response = { 0 };
-  response.base = (char*)frame.data();
+  uv_buf_t response;
+  response.base = (char *)frame.data();
   response.len = frame.size() * sizeof(State);
   for (const auto &client : debug_clients_) {
     debug_server_.Send(client, &response);

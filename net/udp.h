@@ -68,5 +68,4 @@ private:
 #ifdef __linux__
   uv_udp_t socket_;
 #endif
-
 };

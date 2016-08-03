@@ -70,7 +70,7 @@ void UDP::CloseWrapper(uv_handle_t *handle) { ((UDP *)handle->data)->close_(); }
 void UDP::ReceiveWrapper(uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf,
                          const struct sockaddr *addr, unsigned flags) {
   if (nread > 0 && addr != nullptr) {
-    uv_buf_t data = {0};
+    uv_buf_t data;
     data.base = buf->base;
     data.len = size_t(nread);
     ((UDP *)handle->data)->receive_(data, addr, flags);
