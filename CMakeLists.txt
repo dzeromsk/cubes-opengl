@@ -60,6 +60,7 @@ add_executable (client
   base/timer.h
   base/window.h
   net/udp.h
+  net/udp.cc
   state.h
   shader.h
   program.h
@@ -78,6 +79,7 @@ target_include_directories (client PUBLIC
   third_party/gflags/include/
   third_party/glog/
   third_party/glm/
+  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_compile_definitions (client PUBLIC
@@ -108,6 +110,8 @@ add_executable (server
   net/udp.h
   net/addr.h
   net/udp_server.h
+  net/udp.h
+  net/udp.cc
   base/timer.h
   state.h
   cube.h
@@ -125,6 +129,7 @@ target_include_directories (server PUBLIC
   third_party/glog/
   third_party/glm/
   third_party/bullet/src/
+  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries (server
@@ -161,6 +166,7 @@ add_executable (demo
   model.h
   net/addr.h
   net/udp.h
+  net/udp.cc
   net/udp_server.h
   program.h
   shader.h
@@ -183,6 +189,7 @@ target_include_directories (demo PUBLIC
   third_party/glm/
   third_party/glog/
   third_party/libuv/libuv/include/
+  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries (demo
@@ -214,6 +221,7 @@ target_include_directories (udp_test PUBLIC
   third_party/gflags/include/
   third_party/glog/
   third_party/libuv/libuv/include/
+  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries (udp_test

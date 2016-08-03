@@ -26,7 +26,7 @@
 
 #include <functional>
 
-#include "window.h"
+#include "base/window.h"
 
 DEFINE_int32(width, 1280, "Window width");
 DEFINE_int32(height, 800, "Windows height");
